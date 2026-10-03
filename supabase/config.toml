@@ -392,3 +392,12 @@ verify_jwt = false
 
 [functions.ai-worker]
 verify_jwt = false
+
+[functions.payments]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.payment-worker]
+verify_jwt = false
