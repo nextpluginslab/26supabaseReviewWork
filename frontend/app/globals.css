@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: #fff;
+  --color-foreground: #171717;
+  --color-primary: #171717;
+  --color-primary-foreground: #fff;
+  --color-muted: #f5f5f5;
+  --color-muted-foreground: #737373;
+  --color-input: #e5e5e5;
+  --color-ring: #a3a3a3;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
