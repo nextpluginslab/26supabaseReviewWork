@@ -56,7 +56,7 @@ function Tasks() {
               <td>{t.config.title}</td>
               <td>{t.status}</td>
               <td>
-                <a href={`/tasks/${t.id}/results`}>Results / funding</a> ·{" "}
+                <a href={`/tasks/${t.id}/results`}>Results</a> ·{" "}
                 {t.status === "draft" ? (
                   <a href={`/tasks/${t.id}/edit`}>Edit</a>
                 ) : (

@@ -697,3 +697,11 @@
   background: #fff;
   color: #525252;
 }
+
+.funding-result-link {
+  display: inline-block;
+  color: #737373;
+  font-size: 13px;
+  margin-bottom: 16px;
+  text-decoration: underline;
+}

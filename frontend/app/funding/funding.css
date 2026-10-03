@@ -1,0 +1,192 @@
+.funding-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 40px 32px 64px;
+  color: #171717;
+  font:
+    14px/1.5 Arial,
+    Helvetica,
+    sans-serif;
+}
+.funding-page h1,
+.funding-page h2,
+.funding-page p,
+.funding-page dl,
+.funding-page dd {
+  margin: 0;
+}
+.funding-page h1 {
+  font-size: 28px;
+  letter-spacing: -0.8px;
+  font-weight: 600;
+}
+.funding-page h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.funding-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.funding-heading p,
+.funding-note {
+  color: #737373;
+  margin-top: 6px;
+}
+.funding-page button,
+.funding-actions a,
+.funding-empty a {
+  display: inline-block;
+  font: inherit;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 9px 13px;
+  background: #fff;
+  color: #171717;
+  text-decoration: none;
+  cursor: pointer;
+}
+.funding-page button:hover,
+.funding-actions a:hover {
+  background: #f5f5f5;
+}
+.funding-page button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.funding-page :focus-visible {
+  outline: 2px solid #737373;
+  outline-offset: 3px;
+}
+.funding-page .funding-primary {
+  background: #171717;
+  color: #fff;
+  border-color: #171717;
+}
+.funding-mode {
+  color: #a16207;
+  font-size: 12px;
+  margin: 24px 0 12px;
+}
+.funding-balances {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 24px 0;
+}
+.funding-balances > div {
+  padding: 0 24px;
+}
+.funding-balances > div + div {
+  border-left: 1px solid #e5e5e5;
+}
+.funding-balances span {
+  display: block;
+  color: #737373;
+  font-size: 13px;
+}
+.funding-balances strong {
+  display: block;
+  font-weight: 600;
+  font-size: clamp(20px, 3vw, 30px);
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+.funding-balances small {
+  color: #737373;
+  font-size: 11px;
+}
+.funding-note {
+  font-size: 12px;
+  margin-top: 12px !important;
+}
+.funding-tasks {
+  margin-top: 36px;
+}
+.funding-task {
+  padding: 22px 0;
+  border-top: 1px solid #e5e5e5;
+  scroll-margin-top: 24px;
+}
+.funding-task-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.funding-task-title a {
+  color: #171717;
+  text-decoration: none;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.funding-task-title p {
+  color: #737373;
+  font-size: 12px;
+  text-transform: capitalize;
+  margin-top: 4px;
+}
+.funding-badge {
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.funding-task dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 20px 0;
+}
+.funding-task dt {
+  color: #737373;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.funding-task dd {
+  font-weight: 500;
+}
+.funding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.funding-page .funding-error {
+  color: #b45309;
+  margin-top: 16px;
+  overflow-wrap: anywhere;
+}
+.funding-empty {
+  padding: 32px 0;
+}
+.funding-empty p {
+  color: #737373;
+  margin-bottom: 16px;
+}
+@media (max-width: 600px) {
+  .funding-page {
+    padding: 28px 20px 40px;
+  }
+  .funding-balances {
+    padding: 16px 0;
+  }
+  .funding-balances > div {
+    padding: 0 12px;
+  }
+  .funding-balances span {
+    font-size: 11px;
+  }
+  .funding-balances strong {
+    font-size: 20px;
+  }
+  .funding-page h1 {
+    font-size: 25px;
+  }
+}

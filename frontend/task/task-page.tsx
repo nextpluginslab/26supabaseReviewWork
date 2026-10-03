@@ -336,13 +336,15 @@ function TaskContent({
   }
   return (
     <div className="fw-task-page">
-      <header className="fw-site-header">
-        <a className="fw-brand" href="/">
-          reviewWork
-        </a>
-        <span className="fw-header-label">Product testing</span>
-        <span className="fw-sandbox">Sandbox</span>
-      </header>
+      {!live && (
+        <header className="fw-site-header">
+          <a className="fw-brand" href="/">
+            reviewWork
+          </a>
+          <span className="fw-header-label">Product testing</span>
+          <span className="fw-sandbox">Sandbox</span>
+        </header>
+      )}
       {loading ? (
         <main className="fw-loading-state">
           <Loader2 className="fw-spin" />

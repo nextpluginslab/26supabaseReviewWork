@@ -266,11 +266,6 @@ function CreateTaskContent({ editId }: { editId?: string }) {
     budget = cents(draft.budget) ?? 0;
   return (
     <div className="ct-page">
-      <header className="ct-header">
-        <a href="/">reviewWork</a>
-        <span>Publisher</span>
-        <small>Sandbox</small>
-      </header>
       <main>
         {result ? (
           <>
@@ -291,6 +286,9 @@ function CreateTaskContent({ editId }: { editId?: string }) {
             </p>
             <section className="ct-section">
               <h2>Task links</h2>
+              {result.needsFunding && (
+                <a href="/funding">Fund your task with Stripe →</a>
+              )}
               {[
                 ["Tester page", result.testUrl],
                 ["Results page", result.resultsUrl],

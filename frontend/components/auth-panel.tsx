@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { session, supabase } from "@/lib/supabase";
 export function AuthPanel({
@@ -11,13 +12,16 @@ export function AuthPanel({
   required?: boolean;
   onChange?: (value: Session | null) => void;
 }) {
+  const pathname = usePathname();
   const [user, setUser] = useState<Session | null>(null),
     [ready, setReady] = useState(false),
     [email, setEmail] = useState(""),
     [code, setCode] = useState(""),
+    [password, setPassword] = useState(""),
     [sent, setSent] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const isTestAccount = email.trim().toLowerCase() === "test@test.com";
   useEffect(() => {
     let active = true;
     let cancel = () => {};
@@ -58,6 +62,15 @@ export function AuthPanel({
     setBusy(true);
     setError("");
     try {
+      if (isTestAccount) {
+        const { error } = await supabase().auth.signInWithPassword({
+          email: "test@test.com",
+          password,
+        });
+        if (error) throw error;
+        setPassword("");
+        return;
+      }
       const result = sent
         ? await supabase().auth.verifyOtp({
             email: email.trim(),
@@ -78,78 +91,146 @@ export function AuthPanel({
   }
   return (
     <>
-      <section className="account-bar" aria-label="Account">
-        <nav>
-          <a href="/dashboard">My tasks</a> ·{" "}
-          <a href="/tasks/new">Create task</a> ·{" "}
-          <a href="/settings">Settings & notifications</a>
-        </nav>
-        {!ready ? (
-          <p>Checking session…</p>
-        ) : user ? (
+      <header className="account-header">
+        <a className="account-brand" href="/">
+          reviewWork
+        </a>
+        {user && (
+          <>
+            <nav aria-label="Main navigation">
+              {[
+                ["/dashboard", "My tasks"],
+                ["/tasks/new", "Create task"],
+                ["/funding", "Funding"],
+                ["/settings", "Settings & notifications"],
+              ].map(([href, label]) => (
+                <a
+                  key={href}
+                  href={href}
+                  aria-current={pathname === href ? "page" : undefined}
+                >
+                  {label}
+                </a>
+              ))}
+            </nav>
+            <div className="account-user">
+              <span title={user.user.email}>{user.user.email}</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setError("");
+                  try {
+                    const { error } = await supabase().auth.signOut();
+                    if (error) throw error;
+                  } catch (e) {
+                    setError((e as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Sign out
+              </button>
+            </div>
+          </>
+        )}
+      </header>
+      {!ready ? (
+        <p className="account-loading" role="status">
+          Checking session…
+        </p>
+      ) : !user ? (
+        <section className="account-login" aria-labelledby="account-title">
+          <h1 id="account-title">Sign in to reviewWork</h1>
           <p>
-            Signed in as {user.user.email}{" "}
-            <button
-              onClick={() =>
-                void supabase()
-                  .auth.signOut()
-                  .catch((e) => setError(e.message))
-              }
-            >
-              Sign out
-            </button>
+            {required
+              ? "Manage your tasks and feedback."
+              : "Sign in to submit your review."}
           </p>
-        ) : (
           <form onSubmit={login}>
-            <label>
-              Email{" "}
-              <input
-                type="email"
-                required
-                value={email}
-                disabled={sent}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </label>
-            {sent && (
-              <label>
-                Email code{" "}
+            <label htmlFor="account-email">Email</label>
+            <input
+              id="account-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              required
+              value={email}
+              disabled={sent || busy}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setPassword("");
+                setError("");
+              }}
+            />
+            {isTestAccount && (
+              <>
+                <label htmlFor="account-password">Test account password</label>
                 <input
-                  autoComplete="one-time-code"
+                  id="account-password"
+                  type="password"
+                  autoComplete="current-password"
                   required
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  value={password}
+                  disabled={busy}
+                  onChange={(e) => setPassword(e.target.value)}
                 />
-              </label>
+              </>
             )}
-            <button disabled={busy}>
-              {busy
-                ? "Please wait…"
-                : sent
-                  ? "Verify code"
-                  : "Email me a sign-in link / code"}
-            </button>
             {sent && (
               <>
-                <p>
+                <p role="status">
                   Check your email. Follow the sign-in link, or enter the code
                   if your email includes one.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSent(false);
-                    setCode("");
-                  }}
-                >
-                  Use another email / resend
-                </button>
+                <label htmlFor="account-code">Email code</label>
+                <input
+                  id="account-code"
+                  autoComplete="one-time-code"
+                  required
+                  value={code}
+                  disabled={busy}
+                  onChange={(e) => setCode(e.target.value)}
+                />
               </>
             )}
+            <button className="account-primary" disabled={busy}>
+              {busy
+                ? "Please wait…"
+                : isTestAccount
+                  ? "Sign in"
+                  : sent
+                    ? "Verify code"
+                    : "Email me a sign-in link / code"}
+            </button>
+            {sent && (
+              <button
+                className="account-secondary"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setSent(false);
+                  setCode("");
+                  setError("");
+                }}
+              >
+                Use another email / resend
+              </button>
+            )}
           </form>
-        )}
-        {error && <p role="alert">{error}</p>}
-      </section>
+          {error && (
+            <p className="account-error" role="alert">
+              {error}
+            </p>
+          )}
+        </section>
+      ) : error ? (
+        <p className="account-error account-feedback" role="alert">
+          {error}
+        </p>
+      ) : null}
       {(!required || user) && (
         <Fragment key={user?.user.id || "anonymous"}>{children}</Fragment>
       )}

@@ -26,33 +26,6 @@
 .ct-page select {
   font: inherit;
 }
-.ct-header {
-  height: 64px;
-  padding: 0 32px;
-  border-bottom: 1px solid #e5e5e5;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-.ct-header > a {
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.5px;
-}
-.ct-header > span {
-  padding-left: 24px;
-  border-left: 1px solid #e5e5e5;
-  color: #737373;
-  font-size: 13px;
-}
-.ct-header > small {
-  margin-left: auto;
-  border: 1px solid #e5e5e5;
-  border-radius: 5px;
-  padding: 2px 7px;
-  color: #737373;
-  font-size: 11px;
-}
 .ct-page main {
   max-width: 900px;
   padding: 40px 32px 64px;
@@ -339,14 +312,6 @@
   }
 }
 @media (max-width: 600px) {
-  .ct-header {
-    height: 56px;
-    padding: 0 20px;
-    gap: 16px;
-  }
-  .ct-header > span {
-    padding-left: 16px;
-  }
   .ct-page main {
     padding: 28px 20px 40px;
   }

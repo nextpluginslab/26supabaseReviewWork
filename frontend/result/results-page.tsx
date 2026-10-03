@@ -4,7 +4,6 @@ import "./results.css";
 import { AuthPanel } from "@/components/auth-panel";
 import { isDemo } from "@/lib/supabase";
 import { getSubmissionDetail, decide, refreshEvidence } from "./api";
-import { TaskFunding } from "@/components/task-funding";
 import { mutate } from "@/lib/api-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -250,22 +249,24 @@ function ResultsContent({ taskId }: { taskId: string }) {
   };
   return (
     <div className="results-page">
-      <header className="results-header">
-        <span className="brand">
-          reviewWork <span>/</span> Results
-        </span>
-        {!live && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              session ? (signOut(), setSession(null)) : setLoginOpen(true)
-            }
-          >
-            {session ? "Sign out" : "Developer login"}
-          </Button>
-        )}
-      </header>
+      {!live && (
+        <header className="results-header">
+          <span className="brand">
+            reviewWork <span>/</span> Results
+          </span>
+          {!live && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                session ? (signOut(), setSession(null)) : setLoginOpen(true)
+              }
+            >
+              {session ? "Sign out" : "Developer login"}
+            </Button>
+          )}
+        </header>
+      )}
       <main className="results-main">
         {loading ? (
           <div className="empty-state" role="status">
@@ -281,7 +282,11 @@ function ResultsContent({ taskId }: { taskId: string }) {
           </div>
         ) : (
           <>
-            {live && <TaskFunding taskId={taskId} onUpdate={load} />}
+            {live && (
+              <a href={`/funding#${taskId}`} className="funding-result-link">
+                Manage funding →
+              </a>
+            )}
             <div className="page-heading">
               <h1>Results</h1>
               <p>{data.task.title}</p>
