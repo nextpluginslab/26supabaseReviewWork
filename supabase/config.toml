@@ -389,3 +389,6 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [functions.api]
 # Public task reads are anonymous; every private route verifies the user via Auth.
 verify_jwt = false
+
+[functions.ai-worker]
+verify_jwt = false
