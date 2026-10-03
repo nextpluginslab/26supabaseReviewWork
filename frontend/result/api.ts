@@ -1,3 +1,4 @@
+import { readCreatedTask } from "../lib/created-tasks";
 import { createFixture } from "./fixtures";
 import type { Budget, Results, Submission } from "./types";
 const pause = (ms = 350) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,7 +59,29 @@ export function approveInResults(
 const key = (id: string) => `fieldwork:mock-results:v1:${id}`;
 function read(id: string): Results {
   const raw = localStorage.getItem(key(id));
-  return raw ? (JSON.parse(raw) as Results) : createFixture(id);
+  if (raw) return JSON.parse(raw) as Results;
+  const created = readCreatedTask(id);
+  if (created)
+    return {
+      task: {
+        id,
+        title: created.title,
+        product: created.appName,
+        description: created.steps.join("\n"),
+        reward: created.reward,
+        budget: created.budget,
+        deadline: created.deadline,
+        questions: created.questions.map((q) => ({
+          id: q.id,
+          text: q.title,
+          options: q.options,
+        })),
+      },
+      submissions: [],
+      summary: [],
+      asOf: new Date().toISOString(),
+    };
+  return createFixture(id);
 }
 // Replace these adapter bodies with fetch calls to the documented endpoints.
 export async function getTask(id: string) {

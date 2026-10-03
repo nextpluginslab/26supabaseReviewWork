@@ -345,10 +345,12 @@ export function TaskPage({ taskId }: { taskId: string }) {
                   {money(task.reward)} <span>per accepted submission</span>
                 </dd>
               </div>
-              <div>
-                <dt>Time</dt>
-                <dd>~{task.minutes} min</dd>
-              </div>
+              {task.minutes > 0 && (
+                <div>
+                  <dt>Time</dt>
+                  <dd>~{task.minutes} min</dd>
+                </div>
+              )}
               <div>
                 <dt>Deadline</dt>
                 <dd>{date(task)}</dd>
@@ -638,80 +640,82 @@ export function TaskPage({ taskId }: { taskId: string }) {
                 </p>
               </section>
 
-              <section
-                className="fw-content-card"
-                id="section-3"
-                data-section="3"
-              >
-                <h2>Questions</h2>
-                <div className="fw-questions">
-                  {task.questions.map((q, index) => (
-                    <fieldset
-                      className="fw-question"
-                      key={q.id}
-                      id={`question-${q.id}`}
-                      disabled={locked}
-                    >
-                      <legend>
-                        <span>{String(index + 1).padStart(2, "0")}</span>
-                        {q.title}
-                        <span className="fw-required-star">*</span>
-                      </legend>
-                      <RadioGroup
-                        aria-label={q.title}
-                        value={feedback.answers[q.id]?.optionId ?? ""}
-                        onValueChange={(optionId) =>
-                          updateAnswer(q.id, { optionId })
-                        }
+              {task.questions.length > 0 && (
+                <section
+                  className="fw-content-card"
+                  id="section-3"
+                  data-section="3"
+                >
+                  <h2>Questions</h2>
+                  <div className="fw-questions">
+                    {task.questions.map((q, index) => (
+                      <fieldset
+                        className="fw-question"
+                        key={q.id}
+                        id={`question-${q.id}`}
                         disabled={locked}
                       >
-                        {q.options.map((option) => (
-                          <label
-                            className={`fw-option ${feedback.answers[q.id]?.optionId === option.id ? "fw-selected" : ""}`}
-                            key={option.id}
-                            htmlFor={`${q.id}-${option.id}`}
-                          >
-                            <RadioGroupItem
-                              id={`${q.id}-${option.id}`}
-                              value={option.id}
-                            />
-                            {option.label}
-                          </label>
-                        ))}
-                      </RadioGroup>
-                      <label
-                        className="fw-reason-label"
-                        htmlFor={`reason-${q.id}`}
-                      >
-                        Why? <span>*</span>
-                      </label>
-                      <textarea
-                        id={`reason-${q.id}`}
-                        aria-invalid={!!errors[q.id]}
-                        aria-describedby={
-                          errors[q.id] ? `error-${q.id}` : undefined
-                        }
-                        rows={3}
-                        maxLength={5000}
-                        value={feedback.answers[q.id]?.reason ?? ""}
-                        onChange={(e) =>
-                          updateAnswer(q.id, { reason: e.target.value })
-                        }
-                        placeholder="Explain your answer"
-                      />
-                      {errors[q.id] && (
-                        <p
-                          className="fw-error-text"
-                          id={`error-${q.id}`}
-                          role="alert"
+                        <legend>
+                          <span>{String(index + 1).padStart(2, "0")}</span>
+                          {q.title}
+                          <span className="fw-required-star">*</span>
+                        </legend>
+                        <RadioGroup
+                          aria-label={q.title}
+                          value={feedback.answers[q.id]?.optionId ?? ""}
+                          onValueChange={(optionId) =>
+                            updateAnswer(q.id, { optionId })
+                          }
+                          disabled={locked}
                         >
-                          {errors[q.id]}
-                        </p>
-                      )}
-                    </fieldset>
-                  ))}
-                </div>
-              </section>
+                          {q.options.map((option) => (
+                            <label
+                              className={`fw-option ${feedback.answers[q.id]?.optionId === option.id ? "fw-selected" : ""}`}
+                              key={option.id}
+                              htmlFor={`${q.id}-${option.id}`}
+                            >
+                              <RadioGroupItem
+                                id={`${q.id}-${option.id}`}
+                                value={option.id}
+                              />
+                              {option.label}
+                            </label>
+                          ))}
+                        </RadioGroup>
+                        <label
+                          className="fw-reason-label"
+                          htmlFor={`reason-${q.id}`}
+                        >
+                          Why? <span>*</span>
+                        </label>
+                        <textarea
+                          id={`reason-${q.id}`}
+                          aria-invalid={!!errors[q.id]}
+                          aria-describedby={
+                            errors[q.id] ? `error-${q.id}` : undefined
+                          }
+                          rows={3}
+                          maxLength={5000}
+                          value={feedback.answers[q.id]?.reason ?? ""}
+                          onChange={(e) =>
+                            updateAnswer(q.id, { reason: e.target.value })
+                          }
+                          placeholder="Explain your answer"
+                        />
+                        {errors[q.id] && (
+                          <p
+                            className="fw-error-text"
+                            id={`error-${q.id}`}
+                            role="alert"
+                          >
+                            {errors[q.id]}
+                          </p>
+                        )}
+                      </fieldset>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <section
                 className="fw-content-card submit-card"

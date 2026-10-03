@@ -1,3 +1,4 @@
+import { readCreatedTask } from "../lib/created-tasks";
 import { taskFixture } from "./fixtures";
 import { validateFeedback, validateFile } from "./validation";
 import type {
@@ -32,7 +33,7 @@ export async function getTask(id: string) {
   await wait();
   if (id === "missing")
     throw new Error("We couldn’t find this task. Check your task link.");
-  return taskFixture(id);
+  return readCreatedTask(id) ?? taskFixture(id);
 }
 export async function getSubmission(
   taskId: string,
@@ -56,7 +57,10 @@ export async function verifyEmail(email: string, code: string) {
 }
 export async function createUploadUrl(taskId: string, file: File) {
   await wait(180);
-  const error = validateFile(file, taskFixture(taskId));
+  const error = validateFile(
+    file,
+    readCreatedTask(taskId) ?? taskFixture(taskId),
+  );
   if (error) throw new Error(error);
   const id = crypto.randomUUID();
   return {
@@ -150,7 +154,7 @@ export async function submitFeedback(
   )
     throw new Error("Use the email associated with your original submission.");
   const errors = validateFeedback(
-    taskFixture(taskId),
+    readCreatedTask(taskId) ?? taskFixture(taskId),
     feedback,
     Boolean(current),
   );
