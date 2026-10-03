@@ -1,0 +1,11 @@
+**/node_modules
+**/.next*
+**/.env*
+**/*.tsbuildinfo
+**/test-results
+**/playwright-report
+.vscode
+backend
+supabase
+docs
+scripts

@@ -1,0 +1,22 @@
+{
+  "name": "reviewwork-dev",
+  "private": true,
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "dev": "npm --prefix frontend run dev --",
+    "build": "npm --prefix frontend run build",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "test": "npm --prefix frontend run test",
+    "vercel": "vercel",
+    "supabase": "supabase",
+    "openai": "node --env-file=backend/.env.local scripts/openai.mjs",
+    "env:check": "node scripts/check-env.mjs",
+    "deploy:preview": "vercel deploy",
+    "deploy:prod": "vercel deploy --prod"
+  },
+  "devDependencies": {
+    "vercel": "62.2.0"
+  }
+}
