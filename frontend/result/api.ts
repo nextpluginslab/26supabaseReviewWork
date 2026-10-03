@@ -25,7 +25,7 @@ export async function signOut() {
   if (sessionEmail()) await supabase().auth.signOut();
   else mock.signOut();
 }
-function mapRow(r: RemoteSubmission): Submission {
+export function mapRow(r: RemoteSubmission): Submission {
   const rev = r.revisions?.at(-1) || r.current_revision;
   const ai = rev?.ai || r.ai;
   return {
@@ -62,6 +62,11 @@ function mapRow(r: RemoteSubmission): Submission {
             ? "failed"
             : "generating",
       note: ai?.summary?.summary || "",
+      confidenceScore: ai?.summary?.confidence_score,
+      confidenceReason: ai?.summary?.confidence_reason,
+      observations: ai?.summary?.evidence_observations?.map((f) => f.text) || [],
+      followups: ai?.summary?.suggested_followups?.map((f) => f.text) || [],
+      limitations: ai?.summary?.limitations || [],
     },
     reviewReason: r.decisions?.at(-1)?.reason,
     history: r.revisions,

@@ -1,7 +1,5 @@
 import { expect, test } from "@playwright/test";
-test("developer can inspect, sign in, confirm once and persist the result", async ({
-  page,
-}) => {
+test("developer can inspect, sign in, confirm once and persist the result", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/tasks/demo/results");
@@ -85,4 +83,38 @@ test("mobile layout and submission deep links work", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Sign in to confirm" }),
   ).toBeEnabled();
+});
+
+test("AI confidence is prominent, accessible, and does not invent legacy scores", async ({ page }) => {
+  await page.goto("/tasks/demo/results?submission=FB-001");
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("progressbar", { name: "AI evidence confidence" }),
+  ).toHaveAttribute("aria-valuenow", "9");
+  await expect(dialog.getByText("Strong support", { exact: true }))
+    .toBeVisible();
+  await page.screenshot({
+    path: "/tmp/reviewwork-confidence-desktop.png",
+    fullPage: true,
+  });
+  await page.goto("/tasks/demo/results?submission=FB-004");
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "1",
+  );
+  await expect(dialog.getByText("Insufficient evidence", { exact: true }))
+    .toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "/tmp/reviewwork-confidence-mobile.png",
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(() =>
+      document.documentElement.scrollWidth <= window.innerWidth
+    ),
+  ).toBe(true);
+  await page.goto("/tasks/demo/results?submission=FB-005");
+  await expect(dialog.getByText("Not scored · earlier review")).toBeVisible();
+  await expect(dialog.getByRole("progressbar")).toHaveCount(0);
 });

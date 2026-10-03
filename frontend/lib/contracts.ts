@@ -41,10 +41,12 @@ export type Answer = {
   reason: string;
 };
 export type Summary = {
+  confidence_score?: number | null;
+  confidence_reason?: string;
   summary: string;
   findings: { text?: string; finding?: string; sources?: string[] }[];
-  evidence_observations: unknown[];
-  suggested_followups: string[];
+  evidence_observations: { text: string; source_refs: string[] }[];
+  suggested_followups: { text: string; source_refs: string[] }[];
   limitations: string[];
 };
 export type Revision = {

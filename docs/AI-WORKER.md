@@ -61,3 +61,18 @@ References: [OpenAI Structured Outputs](https://developers.openai.com/api/docs/g
 - Tested ordinary-user RPC/worker denial, stale result rejection, fresh retry budget for new source versions, invalid lease rejection and the three-attempt retry limit. AI did not change decisions or payment states.
 - Tagged users/tasks, Storage fixtures, revisions, jobs, notifications (via existing cascades) and aggregate summaries were cleaned up; the worker and minute scheduler remain deployed.
 - The first diagnostic run found an SQL record/table alias collision, fixed by the follow-up migration. Citation generation was also constrained to the exact permitted source references before the final clean run.
+
+## Evidence confidence (prompt v2)
+
+New submission summaries require `confidence_score` (integer 0–10) and
+`confidence_reason` (nonempty English explanation). The score measures support
+for a relevant testing experience against the task requirements, including
+well-documented blockers. It is not sentiment, authenticity, an approval, or a
+payment decision. Aggregate task summaries use a null score.
+
+The results list and submission detail show a colored progress bar: 0–4
+insufficient evidence, 5–7 partial support, 8–10 strong support. Details also
+show evidence observations, follow-up suggestions and limitations. Legacy
+summaries remain readable and display “Not scored · earlier review”; no score
+is inferred from old text. New scoring requires deployment of `ai-worker` and
+the frontend. Existing completed jobs are not automatically regenerated.

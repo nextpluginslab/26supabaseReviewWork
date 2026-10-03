@@ -705,3 +705,81 @@
   margin-bottom: 16px;
   text-decoration: underline;
 }
+
+/* Also applies inside the portaled submission dialog. */
+.confidence {
+  --confidence-color: #b42318;
+  --confidence-bg: #fff1f0;
+  background: var(--confidence-bg);
+  border: 1px solid var(--confidence-color);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin: 16px 0;
+  color: var(--confidence-color);
+}
+.confidence-medium {
+  --confidence-color: #854d0e;
+  --confidence-bg: #fffbeb;
+}
+.confidence-high {
+  --confidence-color: #166534;
+  --confidence-bg: #f0fdf4;
+}
+.confidence-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-weight: 600;
+}
+.confidence-heading strong {
+  font-size: 32px;
+  line-height: 1.2;
+}
+.confidence-heading small {
+  font-size: 16px;
+  font-weight: 400;
+}
+.confidence-track {
+  height: 10px;
+  background: #00000014;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 12px 0 8px;
+}
+.confidence-track > div {
+  height: 100%;
+  background: var(--confidence-color);
+  border-radius: inherit;
+}
+.confidence p {
+  color: #292524;
+  margin: 10px 0 6px;
+}
+.confidence > small {
+  display: block;
+  color: #57534e;
+  font-size: 12px;
+}
+.confidence-compact {
+  min-width: 150px;
+  padding: 10px 12px;
+  margin: 0;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.confidence-compact .confidence-heading strong {
+  font-size: 22px;
+}
+.confidence-compact .confidence-heading small {
+  font-size: 12px;
+}
+.confidence-compact .confidence-track {
+  height: 6px;
+  margin: 8px 0 6px;
+}
+.confidence-unavailable {
+  color: #737373;
+  font-size: 13px;
+  padding: 12px 0;
+}

@@ -143,6 +143,8 @@ export function createFixture(taskId: string): Results {
         },
       ],
       ai: {
+        confidenceScore: i === 2 || i === 5 || i === 4 ? undefined : [9, 6, 0, 1][i % 4],
+        confidenceReason: "The screenshot supports part of the experience; review the required steps before deciding.",
         status: i === 2 ? "generating" : i === 5 ? "failed" : "ready",
         note:
           choices[i][0] === 2

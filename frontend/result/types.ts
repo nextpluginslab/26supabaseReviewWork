@@ -52,7 +52,15 @@ export interface Submission {
     url: string;
     type: "image" | "video";
   }[];
-  ai: { status: "ready" | "generating" | "failed"; note: string };
+  ai: {
+    status: "ready" | "generating" | "failed";
+    note: string;
+    confidenceScore?: number | null;
+    confidenceReason?: string;
+    observations?: string[];
+    followups?: string[];
+    limitations?: string[];
+  };
   reviewReason?: string;
 }
 export interface Results {

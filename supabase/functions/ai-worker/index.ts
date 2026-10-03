@@ -157,7 +157,7 @@ export class Backend {
       );
     }
     const data = await r.json();
-    const summary = parseResponse(data, allowedRefs(job));
+    const summary = parseResponse(data, allowedRefs(job), job.kind);
     summary.limitations = [
       ...new Set([...summary.limitations, ...limitations]),
     ];

@@ -8,15 +8,20 @@ describe("mock results contract", () => {
   });
   it("counts every latest formal answer, including unaccepted feedback", () => {
     const data = createFixture("a");
-    for (const q of data.task.questions)
+    for (const q of data.task.questions) {
       expect(
         getDistribution(data, q.id).reduce((sum, o) => sum + o.count, 0),
       ).toBe(data.submissions.length);
+    }
     expect(getDistribution(data, "ease").map((o) => o.count)).toEqual([
-      7, 3, 2,
+      7,
+      3,
+      2,
     ]);
     expect(getDistribution(data, "clarity").map((o) => o.count)).toEqual([
-      5, 5, 2,
+      5,
+      5,
+      2,
     ]);
   });
   it("protects confirmation with login and disallows declined feedback", () => {
@@ -59,8 +64,65 @@ describe("mock results contract", () => {
     const data = createFixture("empty");
     data.submissions = [];
     expect(getDistribution(data, "ease").map((o) => o.count)).toEqual([
-      0, 0, 0,
+      0,
+      0,
+      0,
     ]);
     expect(getBudget(data).remaining).toBe(data.task.budget);
+  });
+});
+
+describe("live AI assessment mapping", () => {
+  it("preserves zero scores and the evidence reasoning; legacy summaries remain unscored", async () => {
+    const { mapRow } = await import("./api");
+    const row = {
+      id: "s1",
+      submission_no: "FW-example",
+      current_revision_id: "r1",
+      first_submitted_at: "2026-10-03T00:00:00Z",
+      processing_status: "awaiting_publisher",
+      payment_status: "awaiting_confirmation",
+      version: 1,
+      current_revision: {
+        id: "r1",
+        operation_notes: "random",
+        answers: [],
+        evidence_ids: [],
+        ai: {
+          status: "succeeded",
+          summary: {
+            summary: "Unrelated image",
+            confidence_score: 0,
+            confidence_reason: "No product evidence",
+            evidence_observations: [{ text: "Pool photo", source_refs: [] }],
+            suggested_followups: [{
+              text: "Upload an app screenshot",
+              source_refs: [],
+            }],
+            limitations: ["Cannot verify testing"],
+            findings: [],
+          },
+        },
+      },
+    };
+    const mapped = mapRow(
+      row as unknown as import("@/lib/contracts").RemoteSubmission,
+    );
+    expect(mapped.ai.confidenceScore).toBe(0);
+    expect(mapped.ai.confidenceReason).toBe("No product evidence");
+    expect(mapped.ai.observations).toEqual(["Pool photo"]);
+    expect(mapped.ai.followups).toEqual(["Upload an app screenshot"]);
+    expect(mapped.status).toBe("awaiting_publisher");
+    const legacy = {
+      ...row,
+      current_revision: {
+        ...row.current_revision,
+        ai: { status: "succeeded", summary: { summary: "Old summary" } },
+      },
+    };
+    expect(
+      mapRow(legacy as unknown as import("@/lib/contracts").RemoteSubmission).ai
+        .confidenceScore,
+    ).toBeUndefined();
   });
 });

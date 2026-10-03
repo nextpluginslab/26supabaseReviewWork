@@ -49,6 +49,8 @@ const job: Job = {
   },
 };
 const summary = () => ({
+  confidence_score: 4 as number | null,
+  confidence_reason: "The reported blocker lacks visual confirmation.",
   summary: "The tester could not find a control.",
   findings: [{
     text: "A control is missing according to the tester.",
@@ -263,4 +265,40 @@ Deno.test("structured schema restricts citations to the current source set", asy
     schema.properties.findings.items.properties.source_refs.minItems === 1,
   );
   assert(schemaForRefs(new Set()).properties.findings.maxItems === 0);
+});
+
+Deno.test("confidence must be an integer 0-10; submission and aggregate scores differ", () => {
+  const refs = allowedRefs(job);
+  for (const score of [-1, 11, 2.5, "8", undefined, NaN]) {
+    throws(
+      () => validateSummary({ ...summary(), confidence_score: score }, refs),
+      "invalid_model_output",
+    );
+  }
+  for (const score of [0, 4, 7, 10]) {
+    validateSummary({ ...summary(), confidence_score: score }, refs);
+  }
+  throws(
+    () => validateSummary({ ...summary(), confidence_reason: "" }, refs),
+    "invalid_model_output",
+  );
+  const response = (score: number | null) => ({
+    status: "completed",
+    output: [{
+      type: "message",
+      content: [{
+        type: "output_text",
+        text: JSON.stringify({ ...summary(), confidence_score: score }),
+      }],
+    }],
+  });
+  throws(
+    () => parseResponse(response(null), refs, "submission"),
+    "invalid_model_output",
+  );
+  throws(
+    () => parseResponse(response(8), refs, "task"),
+    "invalid_model_output",
+  );
+  assert(parseResponse(response(null), refs, "task").confidence_score === null);
 });

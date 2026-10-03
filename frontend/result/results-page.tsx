@@ -2,6 +2,7 @@
 import { PaymentLink } from "./payment-link";
 
 import "./results.css";
+import { Confidence } from "./confidence";
 import { AuthPanel } from "@/components/auth-panel";
 import { isDemo } from "@/lib/supabase";
 import { getSubmissionDetail, decide, refreshEvidence } from "./api";
@@ -408,6 +409,7 @@ function ResultsContent({ taskId }: { taskId: string }) {
                       <th>Participant</th>
                       <th>Answer</th>
                       <th>Evidence</th>
+                      <th>AI confidence</th>
                       <th>Status</th>
                       <th>Payment</th>
                       <th>
@@ -443,6 +445,9 @@ function ResultsContent({ taskId }: { taskId: string }) {
                             {s.evidence.length} file
                             {s.evidence.length === 1 ? "" : "s"}
                           </button>
+                        </td>
+                        <td>
+                          <Confidence ai={s.ai} compact />
                         </td>
                         <td>
                           <Status status={s.status} />
@@ -540,6 +545,7 @@ function ResultsContent({ taskId }: { taskId: string }) {
                 </div>
                 <Status status={selected.status} />
               </div>
+              <Confidence ai={selected.ai} />
               <div className="detail-section">
                 <h3>Answers & reasons</h3>
                 {data.task.questions.map((q, i) => {
@@ -600,7 +606,19 @@ function ResultsContent({ taskId }: { taskId: string }) {
                   AI review notes
                 </h3>
                 {selected.ai.status === "ready" ? (
-                  <p>{selected.ai.note}</p>
+                  <>
+                    <p>{selected.ai.note}</p>
+                    {[
+                      { title: "Evidence assessment", items: selected.ai.observations },
+                      { title: "Suggested follow-up", items: selected.ai.followups },
+                      { title: "Limitations", items: selected.ai.limitations },
+                    ].map(({ title, items }) => items && items.length > 0 ? (
+                      <section key={title}>
+                        <h4>{title}</h4>
+                        <ul>{items.map((text, i) => <li key={i}>{text}</li>)}</ul>
+                      </section>
+                    ) : null)}
+                  </>
                 ) : (
                   <p>
                     {selected.ai.status === "generating"
