@@ -99,6 +99,10 @@ test("public task allows a fresh guest to upload and submit without login or ema
   await expect(page.getByRole("heading", { name: "Test product", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /sign in|send.*code|verify email/i })).toHaveCount(0);
   expect(guestStarts).toBe(0);
+  const emailBox = await page.getByLabel("Your email address").boundingBox();
+  const titleBox = await page.getByRole("heading", { name: "Test product", exact: true }).boundingBox();
+  expect(emailBox!.y).toBeLessThan(titleBox!.y);
+  await expect(page.getByText("Email is required to receive your payout.", { exact: false })).toBeVisible();
   await page.getByLabel("Your email address").fill("guest@example.com");
   await page.getByLabel("Upload evidence files").setInputFiles({ name:"proof.png",mimeType:"image/png",buffer:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFZkAAAAASUVORK5CYII=","base64") });
   await expect(page.getByText("Uploaded securely", { exact:false })).toBeVisible();

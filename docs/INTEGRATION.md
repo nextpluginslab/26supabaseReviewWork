@@ -75,3 +75,12 @@ FRONTEND_TEST_URL=http://localhost:3000 node --env-file=backend/.env.local backe
 ```
 
 Unused upload cleanup and large-scale result-list pagination optimization remain follow-up work; the MVP fetches all publisher list pages for filtering/export, while authoritative totals come from SQL.
+
+
+## Guest feedback and reward claims — 2026-10-03 update
+
+This update supersedes the login requirement for public feedback and the earlier Stripe configuration status above. Public task pages now put the required payout email first and allow uploads/submission without a login screen. A private anonymous session owns guest evidence; the immutable contact email is verified only when claiming the reward. Publishers still require a verified account to review and authorize payment.
+
+Migrations through `20261004007000_guest_feedback.sql` are applied. `submissions`, `payments`, and `payment-worker` are deployed; anonymous sign-ins and both secure-link email templates are configured. The Sandbox Stripe secrets, worker Vault configuration, and minute schedule are present. A real temporary guest successfully accessed its empty private submission list, was denied payment-account access before email verification, and read the supplied public task. That temporary user was deleted; no feedback, email, or transfer was sent in this smoke test. Desktop/mobile browser checks confirmed the public task has no login prompt and shows the email before the task title.
+
+**SMTP remains unconfigured.** Guest feedback works, but reward email delivery to ordinary recipients is not ready until a custom email provider is connected. Default Supabase SMTP is restricted to project-team addresses. This deployment does not claim successful delivery or an actual Sandbox transfer.

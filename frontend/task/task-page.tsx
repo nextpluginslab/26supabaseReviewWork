@@ -268,7 +268,7 @@ function TaskContent({ taskId }: { taskId: string }) {
           first === "evidence"
             ? "section-2"
             : first === "email"
-              ? "section-4"
+              ? "section-email"
               : `question-${first}`,
         )
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -339,6 +339,108 @@ function TaskContent({ taskId }: { taskId: string }) {
         </main>
       ) : (
         <main className="fw-page-shell" id="main-content">
+          <section className="fw-email-card" id="section-email" aria-label="Payout email">
+          <div className="fw-field">
+            <label htmlFor="email">
+              Your email address{" "}
+              <span className="fw-required-star">*</span>
+            </label>
+            <div className="fw-email-row">
+              <div className="fw-email-input">
+                <Mail size={17} />
+                <input
+                  type="email"
+                  autoComplete="email"
+                  id="email"
+                  form="feedback-form"
+                  required
+                  aria-describedby="email-payout-help"
+                  placeholder="you@example.com"
+                  disabled={locked || !!submission}
+                  value={feedback.email}
+                  aria-invalid={!!errors.email}
+                  onChange={(e) => {
+                    setFeedback((f) => ({
+                      ...f,
+                      email: e.target.value,
+                    }));
+                    setVerifiedEmail("");
+                    setCodeOpen(false);
+                  }}
+                />
+              </div>
+              {editing && !live && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={
+                    busy ||
+                    (!!verifiedEmail &&
+                      verifiedEmail ===
+                        feedback.email.trim().toLowerCase())
+                  }
+                  onClick={() => {
+                    if (
+                      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+                        feedback.email.trim(),
+                      )
+                    ) {
+                      setErrors((e) => ({
+                        ...e,
+                        email: "Enter a valid email address first.",
+                      }));
+                      return;
+                    }
+                    setCodeOpen(true);
+                    setErrors((e) => ({ ...e, email: "" }));
+                  }}
+                >
+                  {verifiedEmail ? (
+                    <>
+                      <Check size={15} />
+                      Verified
+                    </>
+                  ) : (
+                    "Verify email"
+                  )}
+                </Button>
+              )}
+            </div>
+
+            {!live && codeOpen && (
+              <div className="fw-verification">
+                <strong>Demo email verification</strong>
+                <p>
+                  No email is sent. Enter <code>123456</code> to try the
+                  verification flow.
+                </p>
+                <div className="fw-email-row">
+                  <input
+                    aria-label="Verification code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="6-digit code"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                  />
+                  <Button type="button" onClick={verify} disabled={busy}>
+                    Confirm code
+                  </Button>
+                </div>
+              </div>
+            )}
+            {errors.email && (
+              <p className="fw-error-text" role="alert">
+                {errors.email}
+              </p>
+            )}
+          </div>
+            <p className="fw-supporting-text" id="email-payout-help">
+              Email is required to receive your payout. If your feedback is accepted,
+              we’ll send a secure reward-claim link to this address. No login needed.
+            </p>
+          </section>
           <section className="fw-task-intro">
             <div className="fw-title-row">
               <div>
@@ -506,6 +608,7 @@ function TaskContent({ taskId }: { taskId: string }) {
 
           {editing && (
             <form
+              id="feedback-form"
               onSubmit={(e) => {
                 e.preventDefault();
                 void submit();
@@ -739,99 +842,6 @@ function TaskContent({ taskId }: { taskId: string }) {
                 id="section-4"
                 data-section="4"
               >
-                <div className="fw-field">
-                  <label htmlFor="email">
-                    Your email address{" "}
-                    <span className="fw-required-star">*</span>
-                  </label>
-                  <div className="fw-email-row">
-                    <div className="fw-email-input">
-                      <Mail size={17} />
-                      <input
-                        type="email"
-                        autoComplete="email"
-                        id="email"
-                        placeholder="you@example.com"
-                        disabled={locked || !!submission}
-                        value={feedback.email}
-                        aria-invalid={!!errors.email}
-                        onChange={(e) => {
-                          setFeedback((f) => ({
-                            ...f,
-                            email: e.target.value,
-                          }));
-                          setVerifiedEmail("");
-                          setCodeOpen(false);
-                        }}
-                      />
-                    </div>
-                    {editing && !live && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={
-                          busy ||
-                          (!!verifiedEmail &&
-                            verifiedEmail ===
-                              feedback.email.trim().toLowerCase())
-                        }
-                        onClick={() => {
-                          if (
-                            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-                              feedback.email.trim(),
-                            )
-                          ) {
-                            setErrors((e) => ({
-                              ...e,
-                              email: "Enter a valid email address first.",
-                            }));
-                            return;
-                          }
-                          setCodeOpen(true);
-                          setErrors((e) => ({ ...e, email: "" }));
-                        }}
-                      >
-                        {verifiedEmail ? (
-                          <>
-                            <Check size={15} />
-                            Verified
-                          </>
-                        ) : (
-                          "Verify email"
-                        )}
-                      </Button>
-                    )}
-                  </div>
-
-                  {!live && codeOpen && (
-                    <div className="fw-verification">
-                      <strong>Demo email verification</strong>
-                      <p>
-                        No email is sent. Enter <code>123456</code> to try the
-                        verification flow.
-                      </p>
-                      <div className="fw-email-row">
-                        <input
-                          aria-label="Verification code"
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          maxLength={6}
-                          placeholder="6-digit code"
-                          value={code}
-                          onChange={(e) => setCode(e.target.value)}
-                        />
-                        <Button type="button" onClick={verify} disabled={busy}>
-                          Confirm code
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  {errors.email && (
-                    <p className="fw-error-text" role="alert">
-                      {errors.email}
-                    </p>
-                  )}
-                </div>
                 <p className="fw-supporting-text">
                   {live ? "No account or login required to submit. We’ll email a secure link to claim your reward if your feedback is accepted. " : ""}
                   Payment requires publisher acceptance and available budget.

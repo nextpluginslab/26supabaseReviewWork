@@ -635,3 +635,16 @@
     scroll-behavior: auto !important;
   }
 }
+
+.fw-task-page .fw-email-card {
+  padding: 20px 24px;
+  margin-bottom: 28px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  scroll-margin-top: 24px;
+}
+.fw-task-page .fw-email-card .fw-supporting-text { margin-bottom: 0; }
+@media (max-width: 600px) {
+  .fw-task-page .fw-email-card { padding: 18px 16px; }
+}
