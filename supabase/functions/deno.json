@@ -1,0 +1,11 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "stripe": "npm:stripe@18.5.0",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.57.4"
+  },
+  "tasks": {
+    "check": "deno check payments/index.ts stripe-webhook/index.ts payment-worker/index.ts",
+    "test": "deno test --allow-env _shared/payments/"
+  }
+}
