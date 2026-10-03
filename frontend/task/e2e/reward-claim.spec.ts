@@ -117,3 +117,26 @@ test("wrong recipient cannot see the reward and can verify another email", async
   await expect(page.getByRole("button", { name: "Continue to Stripe" }))
     .toHaveCount(0);
 });
+
+test("manually shared payment link works without a login or email request", async ({ page }) => {
+ await apiFixture(page, { signedIn: false });
+ const token = "a".repeat(64);
+ await page.route("**/payments/v1/rewards/*/claim", route => {
+   expect(route.request().headers()["x-reward-claim"]).toBe(token);
+   expect(route.request().headers().authorization).toBeUndefined();
+   return route.fulfill({ json: { id: rewardId, amount_minor: 500, currency: "usd", state: "pending", ready: false } });
+ });
+ await page.route("**/payments/v1/rewards/*/claim/onboarding", route => {
+   expect(route.request().headers()["x-reward-claim"]).toBe(token);
+   return route.fulfill({ json: { url: "https://connect.stripe.com/setup/test" } });
+ });
+ await page.route("https://connect.stripe.com/**", route => route.fulfill({ contentType: "text/html", body: "Stripe setup" }));
+ await page.goto(`${claimPath}#claim=${token}`);
+ await expect(page.getByText("$5.00", { exact: true })).toBeVisible();
+ await expect(page.getByRole("heading", { name: "Verify your email" })).toHaveCount(0);
+ expect(page.url()).not.toContain(token);
+ await page.getByRole("button", { name: "Continue to Stripe" }).click();
+ await expect(page).toHaveURL("https://connect.stripe.com/setup/test");
+ await page.goto(`${claimPath}&connect=return`);
+ await expect(page.getByText("$5.00", { exact: true })).toBeVisible();
+});

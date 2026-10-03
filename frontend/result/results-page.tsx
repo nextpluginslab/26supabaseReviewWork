@@ -1,4 +1,5 @@
 "use client";
+import { PaymentLink } from "./payment-link";
 
 import "./results.css";
 import { AuthPanel } from "@/components/auth-panel";
@@ -529,6 +530,7 @@ function ResultsContent({ taskId }: { taskId: string }) {
           </DialogDescription>
           {selected && data ? (
             <>
+              <PaymentLink key={selected.rewardId || selected.id} rewardId={selected.rewardId} amount={data.task.reward} paid={selected.payment === "paid"} live={live} />
               <div className="detail-person">
                 <div>
                   <strong>{selected.name}</strong>

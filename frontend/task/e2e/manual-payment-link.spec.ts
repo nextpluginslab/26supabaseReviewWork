@@ -1,0 +1,23 @@
+import { test, expect } from "@playwright/test";
+import { apiFixture, taskId } from "./api-fixture";
+test("publisher can create and copy a payment link at the top of submission details", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const f = await apiFixture(page, { submitted: true });
+  f.task().config.reward_amount_minor = 500;
+  f.row.processing_status = "accepted";
+  f.row.payment_status = "pending";
+  f.row.reward = { id: "60000000-0000-4000-8000-000000000001", state: "pending" };
+  const url = `https://reviewwork.vercel.app/rewards/claim?reward=${f.row.reward.id}#claim=${"a".repeat(64)}`;
+  await page.route("**/payments/v1/rewards/*/claim-link", route => route.fulfill({ json: { url, expires_at: "2026-10-10T00:00:00Z" } }));
+  await page.goto(`/tasks/${taskId}/results?submission=FW-LIVE`);
+  const section = page.getByRole("region", { name: "Payment link", exact: true });
+  await expect(section).toBeVisible();
+  await section.getByRole("button", { name: "Create payment link" }).click();
+  await expect(page.getByLabel("Payment link URL")).toHaveValue(url);
+  await section.getByRole("button", { name: "Copy payment link" }).click();
+  await expect(section.getByRole("status")).toContainText("Payment link copied.");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(url);
+  const linkBox = await section.boundingBox();
+  const answersBox = await page.getByRole("heading", { name: "Answers & reasons" }).boundingBox();
+  expect(linkBox!.y).toBeLessThan(answersBox!.y);
+});

@@ -113,3 +113,47 @@ Deno.test("email failure remains retryable; delivery resolves recipient on serve
   assert((await sendOneClaimEmail(rt)).sent === false);
   assert(actions.join(",") === "claim_email,email_failed");
 });
+
+Deno.test("manual token grants only one reward view without creating an Auth session", async () => {
+  const token = "a".repeat(64);
+  const rt = fake({
+    user: () => {
+      throw new Error("Manual claims must not require login");
+    },
+    linkRpc: (action: string, actor: unknown, data: Record<string, string>) => {
+      assert(action === "resolve" && actor === null && data.id === id);
+      assert(data.token_hash !== token && data.token_hash.length === 64);
+      return {
+        id,
+        tester_id: "guest",
+        state: "pending",
+        amount_minor: 500,
+        currency: "usd",
+      };
+    },
+    rpc: (action: string, actor: string) => {
+      assert(action === "connect" && actor === "guest");
+      return { account_id: null };
+    },
+  });
+  const res = await handlePayments(
+    new Request(`${appUrl}/payments/v1/rewards/${id}/claim`, {
+      headers: { "x-reward-claim": token },
+    }),
+    rt,
+  );
+  assert(res.status === 200);
+  const body = await res.json();
+  assert(body.amount_minor === 500 && !body.tester_id);
+  const denied = await handlePayments(
+    new Request(`${appUrl}/payments/v1/me/connect-account`, {
+      headers: { "x-reward-claim": token },
+    }),
+    fake({
+      user: () => {
+        throw new PaymentError(401, "unauthenticated", "Login required");
+      },
+    }),
+  );
+  assert(denied.status === 401);
+});

@@ -195,3 +195,9 @@ Deployment requirements:
 5. Monitor `reward_claim_emails.last_error` and exhausted `attempts >= 8`; after fixing delivery, an operator can reset attempts and next_run_at for unsent rows. Recipients can always request a new verification link from the original claim page.
 
 This remains Stripe Sandbox: there is no real bank payout. Local mocked email/Stripe tests do not establish hosted SMTP delivery or an actual Stripe test transfer.
+
+### Manually shared payment links
+
+Submission details now exposes a publisher-only **Create payment link / Copy payment link** control for authorized, nonzero, unpaid rewards. `POST /rewards/{id}/claim-link` generates a random 256-bit capability, stores only its SHA-256 digest, and returns a link valid for seven days. Replacing the link revokes the previous one. Only the task owner can issue it.
+
+The token is carried in a URL fragment, moved into tab-scoped session storage, and removed from the address bar. Claim reads and onboarding send it in `X-Reward-Claim`. It authorizes only that reward's receiving setup/status, never an Auth session, publisher actions, or payment authorization. Return/refresh URLs contain only the reward ID; the same tab retains its token. A manual link therefore works without SMTP or a login/email challenge. Treat it as private and share it only with its intended recipient. Invalid/expired links require the publisher to generate a replacement. Email delivery remains optional and still needs SMTP for ordinary recipients.

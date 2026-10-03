@@ -109,6 +109,25 @@ export function runtime() {
     }
     return result as T;
   }
+  async function linkRpc<T = Record<string, unknown>>(
+    action: string,
+    actor: string | null,
+    data: Record<string, unknown>,
+  ): Promise<T> {
+    const { data: result, error } = await db.rpc("reward_link_command", {
+      p_action: action,
+      p_actor: actor,
+      p_data: data,
+    });
+    if (error) {
+      throw new PaymentError(
+        error.code === "42501" || error.code === "P0002" ? 403 : 409,
+        "reward_link_unavailable",
+        "This link is invalid, expired, or unavailable. Ask the publisher for a new payment link.",
+      );
+    }
+    return result as T;
+  }
   async function sendClaimEmail(testerId: string, rewardId: string) {
     const recipient = await claimRpc<{ email: string; guest: boolean } | null>(
       "recipient",
@@ -134,7 +153,7 @@ export function runtime() {
     });
     if (sent.error) throw new Error("Claim email delivery failed");
   }
-  return { stripe, rpc, claimRpc, sendClaimEmail, user, appUrl, env };
+  return { stripe, rpc, claimRpc, linkRpc, sendClaimEmail, user, appUrl, env };
 }
 export type Runtime = ReturnType<typeof runtime>;
 export function json(data: unknown, status = 200) {

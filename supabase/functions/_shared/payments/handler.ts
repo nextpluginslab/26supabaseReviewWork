@@ -18,7 +18,7 @@ export async function handlePayments(
   const headers = {
     "access-control-allow-origin": rt.appUrl,
     "access-control-allow-headers":
-      "authorization, apikey, content-type, idempotency-key, x-client-info",
+      "authorization, apikey, content-type, idempotency-key, x-client-info, x-reward-claim",
     "access-control-allow-methods": "GET, POST, OPTIONS",
     "vary": "Origin",
   };
@@ -27,7 +27,6 @@ export async function handlePayments(
   }
   let response: Response;
   try {
-    const user = await rt.user(request);
     const path = new URL(request.url).pathname.replace(
       /^\/(?:functions\/v1\/)?payments/,
       "",
@@ -38,18 +37,53 @@ export async function handlePayments(
     const claim = path.match(
       /^\/v1\/rewards\/([^/]+)\/claim(?:\/(onboarding))?$/,
     );
+    const manualToken = request.headers.get("x-reward-claim");
+    const user = claim && manualToken ? null : await rt.user(request);
+    const issue = path.match(/^\/v1\/rewards\/([^/]+)\/claim-link$/);
+    if (issue && request.method === "POST") {
+      const id = uuid(issue[1]);
+      const token = Array.from(
+        crypto.getRandomValues(new Uint8Array(32)),
+        (b) => b.toString(16).padStart(2, "0"),
+      ).join("");
+      const result = await rt.linkRpc<{ expires_at: string }>(
+        "issue",
+        user!.id,
+        { id, token_hash: await digest(token) },
+      );
+      const response = json({
+        url: `${rt.appUrl}/rewards/claim?reward=${id}#claim=${token}`,
+        expires_at: result.expires_at,
+      });
+      for (const [name, value] of Object.entries(headers)) {
+        response.headers.set(name, value);
+      }
+      return response;
+    }
     if (
       claim &&
       ((request.method === "GET" && !claim[2]) ||
         (request.method === "POST" && claim[2]))
     ) {
-      const reward = await rt.claimRpc<
-        { id: string; amount_minor: number; state: string; tester_id: string }
-      >(
-        "reward",
-        user.id,
-        { id: uuid(claim[1]) },
-      );
+      type Claim = {
+        id: string;
+        amount_minor: number;
+        state: string;
+        tester_id: string;
+      };
+      if (manualToken && !/^[a-f0-9]{64}$/.test(manualToken)) {
+        throw new PaymentError(
+          403,
+          "invalid_claim_link",
+          "Invalid payment link.",
+        );
+      }
+      const reward = manualToken
+        ? await rt.linkRpc<Claim>("resolve", null, {
+          id: uuid(claim[1]),
+          token_hash: await digest(manualToken),
+        })
+        : await rt.claimRpc<Claim>("reward", user!.id, { id: uuid(claim[1]) });
       if (request.method === "GET") {
         const account = await connectStatus(rt, reward.tester_id);
         const { tester_id: _tester, ...visibleReward } = reward;
@@ -92,9 +126,9 @@ export async function handlePayments(
     }
     const retry = path.match(/^\/v1\/rewards\/([^/]+)\/retry$/);
     if (request.method === "GET" && task && task[2] !== "funding-sessions") {
-      response = json(await taskPayments(rt, user.id, uuid(task[1])));
+      response = json(await taskPayments(rt, user!.id, uuid(task[1])));
     } else if (request.method === "GET" && path === "/v1/me/connect-account") {
-      response = json(await connectStatus(rt, user.id));
+      response = json(await connectStatus(rt, user!.id));
     } else if (
       request.method === "POST" &&
       (task?.[2] === "funding-sessions" || retry ||
@@ -137,16 +171,16 @@ export async function handlePayments(
       const route = `POST ${path}`;
       const record = await rt.rpc<{ cached: boolean; response?: unknown }>(
         "request_begin",
-        user.id,
+        user!.id,
         { route, key, hash: await digest("{}") },
       );
       let result = record.response;
       if (!record.cached) {
-        if (task) result = await createFunding(rt, user.id, task[1]);
+        if (task) result = await createFunding(rt, user!.id, task[1]);
         else if (retry) {
           const reward = await rt.rpc<{ id: string; state: string }>(
             "retry",
-            user.id,
+            user!.id,
             { id: retry[1], request_key: key },
           );
           result = {
@@ -154,8 +188,8 @@ export async function handlePayments(
             state: reward.state,
             mode: "stripe_test",
           };
-        } else result = await onboarding(rt, user.id, await digest(key));
-        await rt.rpc("request_finish", user.id, {
+        } else result = await onboarding(rt, user!.id, await digest(key));
+        await rt.rpc("request_finish", user!.id, {
           route,
           key,
           response: result,

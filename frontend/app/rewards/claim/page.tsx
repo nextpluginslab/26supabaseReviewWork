@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { request } from "@/lib/api-client";
+import { endpoint, request } from "@/lib/api-client";
 import { session, supabase } from "@/lib/supabase";
 import "./reward.css";
 
@@ -23,13 +23,43 @@ export default function ClaimReward() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
 
+  async function claimRequest<T>(id: string, onboarding = false): Promise<T> {
+    const token = sessionStorage.getItem(`reward-claim:${id}`);
+    const path = `/rewards/${id}/claim${onboarding ? "/onboarding" : ""}`;
+    if (!token) {
+      return request<T>(
+        "payments",
+        path,
+        onboarding ? { method: "POST", body: {} } : {},
+      );
+    }
+    const response = await fetch(endpoint("payments") + path, {
+      method: onboarding ? "POST" : "GET",
+      headers: {
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+        "x-reward-claim": token,
+        ...(onboarding ? { "Content-Type": "application/json" } : {}),
+      },
+      body: onboarding ? "{}" : undefined,
+      cache: "no-store",
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        result.message ||
+          "Unable to open payment link. Ask the publisher for a new link.",
+      );
+    }
+    return result as T;
+  }
+
   async function load(id: string) {
-    if (!await session()) {
+    if (!sessionStorage.getItem(`reward-claim:${id}`) && !await session()) {
       setVerify(true);
       return;
     }
     try {
-      setReward(await request<Reward>("payments", `/rewards/${id}/claim`));
+      setReward(await claimRequest<Reward>(id));
       setVerify(false);
     } catch (e) {
       const status = (e as { status?: number }).status;
@@ -45,9 +75,21 @@ export default function ClaimReward() {
         id,
       )
     ) {
-      setError("Open the reward link from your email to continue.");
+      setError(
+        "Open the payment link shared by your publisher or sent by email to continue.",
+      );
       setBusy(false);
       return;
+    }
+    const token = new URLSearchParams(location.hash.slice(1)).get("claim");
+    if (token) {
+      if (!/^[a-f0-9]{64}$/.test(token)) {
+        setError("Invalid payment link. Ask the publisher for a new link.");
+        setBusy(false);
+        return;
+      }
+      sessionStorage.setItem(`reward-claim:${id}`, token);
+      history.replaceState(null, "", location.pathname + location.search);
     }
     setRewardId(id);
     // Supabase consumes the email link and establishes proof of ownership.
@@ -93,14 +135,7 @@ export default function ClaimReward() {
   }
 
   async function setup() {
-    const result = await request<{ url: string }>(
-      "payments",
-      `/rewards/${rewardId}/claim/onboarding`,
-      {
-        method: "POST",
-        body: {},
-      },
-    );
+    const result = await claimRequest<{ url: string }>(rewardId, true);
     const url = new URL(result.url);
     if (url.protocol !== "https:" || url.hostname !== "connect.stripe.com") {
       throw new Error("Invalid receiving account link. Please try again.");
@@ -115,8 +150,7 @@ export default function ClaimReward() {
         <p className="reward-eyebrow">YOUR FEEDBACK REWARD</p>
         <h1 id="reward-title">Claim your reward</h1>
         <p>
-          No password or separate login needed. Your email link verifies that
-          the reward belongs to you.
+          No password or separate login needed. Use the private payment link from your publisher or verify your email.
         </p>
         <p className="reward-sandbox">
           Stripe Sandbox · Test funds only · No bank payout

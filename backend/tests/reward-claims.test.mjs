@@ -17,7 +17,7 @@ before(async()=>{
   await db.exec(`create role anon; create role authenticated; create role service_role;
     create schema auth; create table auth.users(id uuid primary key);
     insert into auth.users values('${tester}'),('${stranger}');`);
-  for(const file of ['20261003000100_payments.sql','20261004005000_reward_claims.sql'])
+  for(const file of ['20261003000100_payments.sql','20261004005000_reward_claims.sql','20261004008000_manual_reward_links.sql'])
     await db.exec(await readFile(new URL('../../supabase/migrations/'+file,import.meta.url),'utf8'));
   await db.query(`insert into payment_task_accounts(task_id,publisher_id,budget_amount_minor,reward_amount_minor) values($1,$2,1000,200)`,['20000000-0000-4000-8000-000000000001',stranger]);
 });
@@ -57,4 +57,26 @@ test('queue rolls back with reward authorization and is unavailable to browser r
     assert.equal((await db.query("select has_function_privilege($1,'reward_claim_command(text,uuid,jsonb)','EXECUTE') allowed",[role])).rows[0].allowed,false);
     assert.equal((await db.query("select has_table_privilege($1,'reward_claim_emails','SELECT') allowed",[role])).rows[0].allowed,false);
   }
+});
+
+const link = async(action,actor,data)=>(await db.query('select reward_link_command($1,$2::uuid,$3::jsonb) result',[action,actor,JSON.stringify(data)])).rows[0].result;
+test('manual link is scoped to one reward, expires, and rotation revokes the old link',async()=>{
+ const id=await reward(), other=await reward();
+ const hash='a'.repeat(64), next='b'.repeat(64);
+ await link('issue',stranger,{id,token_hash:hash});
+ assert.equal((await link('resolve',null,{id,token_hash:hash})).tester_id,tester);
+ await db.exec('savepoint invalid_link');
+ await assert.rejects(()=>link('resolve',null,{id:other,token_hash:hash}),/insufficient_privilege|permission denied/);
+ await db.exec('rollback to invalid_link');
+ await link('issue',stranger,{id,token_hash:next});
+ await db.exec('savepoint invalid_link2');
+ await assert.rejects(()=>link('resolve',null,{id,token_hash:hash}),/insufficient_privilege|permission denied/);
+ await db.exec('rollback to invalid_link2');
+ assert.equal((await link('resolve',null,{id,token_hash:next})).id,id);
+ await db.exec("update reward_access_links set expires_at=now()-interval '1 second'");
+ await assert.rejects(()=>link('resolve',null,{id,token_hash:next}),/insufficient_privilege|permission denied/);
+});
+test('recipient cannot issue their own payout link; only publisher can',async()=>{
+ const id=await reward();
+ await assert.rejects(()=>link('issue',tester,{id,token_hash:'a'.repeat(64)}),/insufficient_privilege|permission denied/);
 });
