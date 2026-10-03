@@ -30,7 +30,7 @@ describe("feedback validation", () => {
     delete incomplete.answers[task.questions[0].id];
     incomplete.answers[task.questions[1].id].reason = "  ";
     expect(Object.keys(validateFeedback(task, incomplete, false, 0))).toEqual(
-      task.questions.map((q) => q.id),
+      task.questions.slice(0, 2).map((q) => q.id),
     );
   });
   it("rejects an option from another question", () => {

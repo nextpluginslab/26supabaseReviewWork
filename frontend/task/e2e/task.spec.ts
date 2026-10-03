@@ -45,6 +45,10 @@ test("submit, restore, request changes and preserve revision history", async ({
   await page
     .locator("#reason-use-again")
     .fill("I need a clearer way to pause.");
+  await page.getByRole("radio", { name: "No", exact: true }).click();
+  await page
+    .locator("#reason-willing-to-pay")
+    .fill("I would need clearer controls before paying $5 per month.");
   await page.getByLabel("Your email address").fill("tester@example.com");
   await page.waitForTimeout(600);
   await page.reload();

@@ -43,6 +43,15 @@ export function taskFixture(id: string): Task {
           { id: "no", label: "Probably not" },
         ],
       },
+      {
+        id: "willing-to-pay",
+        title: "Would you be willing to pay $5 per month?",
+        options: [
+          { id: "yes", label: "Yes" },
+          { id: "no", label: "No" },
+          { id: "unsure", label: "Not sure" },
+        ],
+      },
     ],
   };
 }
