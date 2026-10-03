@@ -1,207 +1,145 @@
-import { taskFixture } from "./fixtures";
-import { validateFeedback, validateFile } from "./validation";
-import type {
-  Evidence,
-  Feedback,
-  PaymentStatus,
-  ReviewStatus,
-  Submission,
-} from "./types";
-
-// Browser-only mock adapter. Replace these functions with fetch calls to the
-// documented endpoints; do not ship local verification/storage as authentication.
-const prefix = "fieldwork:v1:";
-const wait = (ms = 350) =>
-  new Promise<void>((resolve, reject) =>
-    setTimeout(
-      () =>
-        navigator.onLine
-          ? resolve()
-          : reject(new Error("You’re offline. Reconnect and try again.")),
-      ms,
-    ),
-  );
-function read<T>(key: string): T | null {
-  const raw = localStorage.getItem(prefix + key);
-  return raw ? (JSON.parse(raw) as T) : null;
-}
-function save(key: string, value: unknown) {
-  localStorage.setItem(prefix + key, JSON.stringify(value));
-}
+import * as mock from "./mock-api";
+import { isDemo, session, sessionEmail } from "@/lib/supabase";
+import { request, mutate } from "@/lib/api-client";
+import {
+  mapTask,
+  mapSubmission,
+  feedbackBody,
+  type PublicTask,
+  type RemoteSubmission,
+} from "@/lib/contracts";
+import type { Feedback, Submission, Evidence } from "./types";
+const taskIds = new Map<string, string>();
 export async function getTask(id: string) {
-  await wait();
-  if (id === "missing")
-    throw new Error("We couldn’t find this task. Check your task link.");
-  return taskFixture(id);
+  if (isDemo(id)) return mock.getTask(id);
+  const { task } = await request<{ task: PublicTask }>(
+    "api",
+    `/public/tasks/${id}`,
+    { public: true },
+  );
+  taskIds.set(id, task.id);
+  return mapTask(task);
 }
-export async function getSubmission(
-  taskId: string,
-): Promise<Submission | null> {
-  await wait(120);
-  return read<Submission>(`submission:${taskId}`);
+async function realId(id: string) {
+  return taskIds.get(id) || (await getTask(id)).id;
 }
-export function loadDraft(taskId: string) {
-  return read<Feedback>(`draft:${taskId}`);
+export async function getSubmission(id: string): Promise<Submission | null> {
+  if (isDemo(id)) return mock.getSubmission(id);
+  const auth = await session();
+  if (!auth) return null;
+  const list = await request<{ items: RemoteSubmission[] }>(
+    "submissions",
+    `/me/submissions?task_id=${await realId(id)}`,
+  );
+  if (!list.items.length) return null;
+  const row = await request<RemoteSubmission>(
+    "submissions",
+    `/submissions/${list.items[0].id}`,
+  );
+  return mapSubmission(row, auth.user.email || "");
 }
-export function saveDraft(taskId: string, draft: Feedback) {
-  save(`draft:${taskId}`, draft);
+const draftKey = (id: string) =>
+  `reviewwork:feedback:${sessionEmail() || "anonymous"}:${id}`;
+export function loadDraft(id: string): Feedback | null {
+  if (isDemo(id)) return mock.loadDraft(id);
+  const raw = localStorage.getItem(draftKey(id));
+  return raw ? JSON.parse(raw) : null;
 }
-export async function verifyEmail(email: string, code: string) {
-  await wait();
-  if (code !== "123456")
-    throw new Error(
-      "Use the demo code 123456. No email is sent in this preview.",
-    );
-  sessionStorage.setItem(prefix + "verifiedEmail", email.trim().toLowerCase());
+export function saveDraft(id: string, f: Feedback) {
+  if (isDemo(id)) return mock.saveDraft(id, f);
+  localStorage.setItem(draftKey(id), JSON.stringify(f));
 }
-export async function createUploadUrl(taskId: string, file: File) {
-  await wait(180);
-  const error = validateFile(file, taskFixture(taskId));
-  if (error) throw new Error(error);
-  const id = crypto.randomUUID();
-  return {
-    id,
-    uploadUrl: `mock://uploads/${id}`,
-    path: `${taskId}/${id}/${file.name}`,
-  };
-}
-function db() {
-  return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open("fieldwork-evidence", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("files");
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () =>
-      reject(new Error("Local evidence storage is unavailable."));
-  });
+export const verifyEmail = mock.verifyEmail;
+export const simulateReview = mock.simulateReview;
+export async function createUploadUrl(id: string, file: File) {
+  if (isDemo(id)) return mock.createUploadUrl(id, file);
+  const row = await mutate<{ id: string; path: string; upload_url: string }>(
+    "submissions",
+    "/uploads",
+    {
+      task_id: await realId(id),
+      name: file.name,
+      mime_type: file.type,
+      size_bytes: file.size,
+    },
+  );
+  return { id: row.id, path: row.path, uploadUrl: row.upload_url };
 }
 export async function uploadEvidence(
-  taskId: string,
+  id: string,
   file: File,
   onProgress: (n: number) => void,
 ): Promise<Evidence> {
-  const target = await createUploadUrl(taskId, file);
-  for (const n of [20, 55, 85]) {
-    await wait(180);
-    onProgress(n);
-  }
-  const database = await db();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = database.transaction("files", "readwrite");
-      tx.objectStore("files").put(file, target.path);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () =>
-        reject(new Error("Couldn’t save this file. Try again."));
-      tx.onabort = () => reject(new Error("Upload interrupted. Try again."));
-    });
-  } finally {
-    database.close();
-  }
+  if (isDemo(id)) return mock.uploadEvidence(id, file, onProgress);
+  const target = await createUploadUrl(id, file);
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", target.uploadUrl);
+    xhr.setRequestHeader("Content-Type", file.type);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable)
+        onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error("Upload failed. Please retry."));
+    xhr.onerror = () => reject(new Error("Upload interrupted. Please retry."));
+    xhr.timeout = 120000;
+    xhr.ontimeout = () => reject(new Error("Upload timed out."));
+    xhr.send(file);
+  });
   onProgress(100);
   return {
     id: target.id,
+    path: `remote:${target.id}`,
     name: file.name,
     size: file.size,
     type: file.type,
-    path: target.path,
   };
 }
-export async function getEvidence(path: string): Promise<Blob | undefined> {
-  const database = await db();
-  try {
-    return await new Promise<Blob | undefined>((resolve, reject) => {
-      const request = database
-        .transaction("files")
-        .objectStore("files")
-        .get(path);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(new Error("Couldn’t open this evidence."));
-    });
-  } finally {
-    database.close();
-  }
+export async function getEvidence(path: string) {
+  if (!path.startsWith("remote:")) return mock.getEvidence(path);
+  const row = await request<{ url: string }>(
+    "submissions",
+    `/evidence/${path.slice(7)}/read-url`,
+    { method: "POST" },
+  );
+  const response = await fetch(row.url);
+  if (!response.ok)
+    throw new Error("Evidence unavailable. Refresh and try again.");
+  return response.blob();
 }
 export async function submitFeedback(
-  taskId: string,
+  id: string,
   feedback: Feedback,
-  expectedRevision?: number,
+  expected?: number,
+  snapshot?: Submission,
 ): Promise<Submission> {
-  await wait(650);
-  const current = read<Submission>(`submission:${taskId}`);
-  if (
-    current &&
-    (current.status !== "changes_requested" ||
-      expectedRevision !== current.revisions.length)
-  )
-    throw new Error(
-      "This submission has changed. Refresh its status before continuing.",
-    );
-  if (!current && expectedRevision !== undefined)
-    throw new Error("Submission not found. Reload the page.");
-  if (
-    sessionStorage.getItem(prefix + "verifiedEmail") !==
-    feedback.email.trim().toLowerCase()
-  )
-    throw new Error("Verify your email before submitting.");
-  if (
-    current &&
-    current.revisions[0].feedback.email.toLowerCase() !==
-      feedback.email.trim().toLowerCase()
-  )
-    throw new Error("Use the email associated with your original submission.");
-  const errors = validateFeedback(
-    taskFixture(taskId),
-    feedback,
-    Boolean(current),
-  );
-  if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
-  for (const file of feedback.evidence) {
-    if (!file.path.startsWith(`${taskId}/`) || !(await getEvidence(file.path)))
-      throw new Error("An evidence file is missing. Please upload it again.");
-  }
-  // Recheck after async evidence reads to prevent competing local revisions.
-  const latest = read<Submission>(`submission:${taskId}`);
-  if (
-    latest?.revisions.length !== current?.revisions.length ||
-    latest?.status !== current?.status
-  )
-    throw new Error("Submission updated in another tab. Refresh its status.");
-  const submission: Submission = {
-    id: current?.id ?? `FW-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-    taskId,
-    status: "awaiting_publisher",
-    payment: "awaiting_confirmation",
-    message: "",
-    revisions: [
-      ...(current?.revisions ?? []),
+  if (isDemo(id)) return mock.submitFeedback(id, feedback, expected);
+  const body = feedbackBody(feedback);
+  let row: RemoteSubmission;
+  if (snapshot) {
+    row = await mutate(
+      "submissions",
+      `/submissions/${snapshot.backendId}/revisions`,
       {
-        number: (current?.revisions.length ?? 0) + 1,
-        submittedAt: new Date().toISOString(),
-        feedback: structuredClone(feedback),
+        ...body,
+        expected_revision_id: snapshot.currentRevisionId,
+        expected_version: snapshot.version,
       },
-    ],
-  };
-  save(`submission:${taskId}`, submission);
-  localStorage.removeItem(prefix + `draft:${taskId}`);
-  return submission;
-}
-// Explicit preview controls, never an automatic AI decision or payment.
-export async function simulateReview(
-  taskId: string,
-  status: ReviewStatus,
-  payment: PaymentStatus = "awaiting_confirmation",
-) {
-  await wait();
-  const current = read<Submission>(`submission:${taskId}`);
-  if (!current) throw new Error("Submit feedback first.");
-  current.status = status;
-  current.payment = payment;
-  current.message =
-    status === "changes_requested"
-      ? "Thanks for your feedback! Please add a screenshot showing the timer after you started your session, or show the screen where you got stuck. Keep your existing answers or add more detail."
-      : status === "declined"
-        ? "The evidence does not show the product specified in this task. The publisher could not confirm this experience."
-        : "";
-  save(`submission:${taskId}`, current);
-  return current;
+    );
+  } else {
+    row = await mutate(
+      "submissions",
+      `/tasks/${await realId(id)}/submissions`,
+      body,
+    );
+  }
+  localStorage.removeItem(draftKey(id));
+  const detail = await request<RemoteSubmission>(
+    "submissions",
+    `/submissions/${row.id}`,
+  );
+  return mapSubmission(detail, (await session())?.user.email || "");
 }

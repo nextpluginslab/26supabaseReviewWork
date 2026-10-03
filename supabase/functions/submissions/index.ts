@@ -1,3 +1,4 @@
+import { ApiError as AgentError, requireAgent } from "../_shared/agent-auth.ts";
 import {
   ApiError,
   canonical,
@@ -58,6 +59,7 @@ type Revision = {
   submitted_at: string;
 };
 type Tables = {
+  payment_rewards: { id: string; submission_id: string; state: string };
   tasks: Task;
   submissions: Submission;
   submission_evidence: Evidence;
@@ -128,6 +130,17 @@ async function signedRead(e: Evidence) {
     expires_in: 300,
   };
 }
+async function paymentView(s: Submission) {
+  const rewards = await rows("payment_rewards", {
+    submission_id: "eq." + s.id,
+    select: "id,submission_id,state",
+  });
+  return {
+    ...s,
+    payment_status: rewards[0]?.state || s.payment_status,
+    reward: rewards[0] || null,
+  };
+}
 async function detail(s: Submission) {
   const [revisions, decisions] = await Promise.all([
     rows("submission_revisions", {
@@ -155,7 +168,7 @@ async function detail(s: Submission) {
     })
     : [];
   return {
-    ...s,
+    ...await paymentView(s),
     revisions: revisions.map((r) => ({
       ...r,
       ai: jobs.find((j) => j.revision_id === r.id) ?? { status: "queued" },
@@ -266,28 +279,42 @@ export async function handle(req: Request): Promise<Response> {
     if (!authorization?.match(/^Bearer \S+$/i)) {
       throw new ApiError(401, "unauthorized");
     }
-    const auth = await fetch(base + "/auth/v1/user", {
-      headers: { apikey: serviceKey, Authorization: authorization },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!auth.ok) {
-      await auth.body?.cancel();
-      throw new ApiError(
-        auth.status >= 500 ? 503 : 401,
-        auth.status >= 500 ? "auth_unavailable" : "unauthorized",
-      );
-    }
-    const user = await auth.json();
-    const actor = uuid(user.id);
-    if (!user.email_confirmed_at || user.is_anonymous) {
-      throw new ApiError(403, "email_not_verified");
-    }
     const url = new URL(req.url);
     const path = url.pathname.replace(/^\/submissions(?=\/v1\/)/, "");
+    const agentRequest = /^Bearer rwk_/i.test(authorization);
+    let actor: string;
+    if (agentRequest) {
+      const readable = req.method === "GET" &&
+        (/^\/v1\/tasks\/[^/]+\/submissions$/.test(path) ||
+          /^\/v1\/submissions\/[^/]+$/.test(path));
+      if (!readable) throw new ApiError(403, "human_session_required");
+      actor = (await requireAgent(req, ["submissions:read"])).publisher_id;
+    } else {
+      const auth = await fetch(base + "/auth/v1/user", {
+        headers: { apikey: serviceKey, Authorization: authorization },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!auth.ok) {
+        await auth.body?.cancel();
+        throw new ApiError(
+          auth.status >= 500 ? 503 : 401,
+          auth.status >= 500 ? "auth_unavailable" : "unauthorized",
+        );
+      }
+      const user = await auth.json();
+      actor = uuid(user.id);
+      if (!user.email_confirmed_at || user.is_anonymous) {
+        throw new ApiError(403, "email_not_verified");
+      }
+    }
     let match: RegExpMatchArray | null;
     if (req.method === "GET") {
       if ((match = path.match(/^\/v1\/submissions\/([^/]+)$/))) {
-        return json(await detail(await ownedSubmission(uuid(match[1]), actor)));
+        const found = await ownedSubmission(uuid(match[1]), actor);
+        if (
+          agentRequest && (await task(found.task_id)).publisher_id !== actor
+        ) throw new ApiError(404, "submission_not_found");
+        return json(await detail(found));
       }
       const own = path === "/v1/me/submissions";
       const list = path.match(/^\/v1\/tasks\/([^/]+)\/submissions$/);
@@ -329,14 +356,25 @@ export async function handle(req: Request): Promise<Response> {
             select: "revision_id,status,summary",
           })
           : [];
+        const rewards = page.length
+          ? await rows("payment_rewards", {
+            submission_id: "in.(" + page.map((s) => s.id).join(",") + ")",
+            select: "id,submission_id,state",
+          })
+          : [];
         return json({
-          items: page.map((s) => ({
-            ...s,
-            current_revision: revisions.find((r) =>
-              r.id === s.current_revision_id
-            ),
-            ai: jobs.find((j) => j.revision_id === s.current_revision_id),
-          })),
+          items: page.map((s) => {
+            const reward = rewards.find((r) => r.submission_id === s.id);
+            return {
+              ...s,
+              payment_status: reward?.state || s.payment_status,
+              reward: reward || null,
+              current_revision: revisions.find((r) =>
+                r.id === s.current_revision_id
+              ),
+              ai: jobs.find((j) => j.revision_id === s.current_revision_id),
+            };
+          }),
           next_cursor: found.length > limit ? page.at(-1)!.id : null,
         });
       }
@@ -440,7 +478,7 @@ export async function handle(req: Request): Promise<Response> {
     }
     throw new ApiError(404, "route_not_found");
   } catch (error) {
-    const e = error instanceof ApiError
+    const e = error instanceof ApiError || error instanceof AgentError
       ? error
       : new ApiError(500, "internal_error");
     if (e.status >= 500) {

@@ -1,0 +1,58 @@
+import { before, after, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { PGlite } from '@electric-sql/pglite';
+let db;
+const publisher='10000000-0000-4000-8000-000000000001', tester='10000000-0000-4000-8000-000000000002', tester2='10000000-0000-4000-8000-000000000003';
+const config={title:'Integration',app_name:'Example',app_type:'web',app_url:'https://example.com',experience_instructions:'',task_description:'',evidence_instructions:'',evidence_types:['image'],questions:[],reward_amount_minor:100,budget_amount_minor:100,currency:'USD',duration_seconds:259200,display_timezone:'UTC'};
+let n=0;
+const taskRpc=async(action,id,c,version,key=`task-${++n}`)=>(await db.query('select mutate_task($1,$2,$3,$4,$5,$6,$7) result',[publisher,action,id,c&&JSON.stringify(c),version,key,key])).rows[0].result;
+const pay=async(action,actor,data)=>(await db.query('select payments_command($1,$2,$3) result',[action,actor,JSON.stringify(data)])).rows[0].result;
+const sub=async(actor,action,id,body,key=`sub-${++n}`)=>(await db.query('select mutate_submission($1,$2,$3,$4,$5,$6) result',[actor,action,id,JSON.stringify(body),key,JSON.stringify(body)])).rows[0].result;
+before(async()=>{
+ db=new PGlite();
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create schema extensions;create schema storage;
+ create table auth.users(id uuid primary key,email_confirmed_at timestamptz,is_anonymous boolean default false);
+ create function extensions.gen_random_bytes(n integer) returns bytea language sql as $$ select decode(substr(repeat(md5(random()::text),n),1,n*2),'hex') $$;
+ create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+ create table storage.objects(bucket_id text,name text,metadata jsonb);
+ create function auth.uid() returns uuid language sql as $$select null::uuid$$;
+ insert into auth.users values('${publisher}',now(),false),('${tester}',now(),false),('${tester2}',now(),false);`);
+ for(const name of ['20261003000100_payments.sql','20261003230000_task_api.sql','20261003231000_submissions_api.sql','20261004001000_notifications.sql','20261004004000_integrate_modules.sql'])await db.exec(await readFile(new URL(`../../supabase/migrations/${name}`,import.meta.url),'utf8'));
+});
+after(async()=>{await db?.close();});
+async function evidence(task,actor){const e=await sub(actor,'upload',task,{name:'shot.png',mime_type:'image/png',size_bytes:30});await db.query('insert into storage.objects values($1,$2,$3)',['submission-evidence',e.object_path,JSON.stringify({size:30,mimetype:'image/png'})]);return e.id;}
+test('paid task must fund before publication; acceptance atomically creates one reward and reserves budget',async()=>{
+ let t=await taskRpc('create',null,config,null);
+ assert.equal((await pay('task',publisher,{task_id:t.id})).funding_state,'unfunded');
+ await assert.rejects(()=>taskRpc('publish',t.id,null,t.version),/funding_required/);
+ const f=await pay('reserve_funding',publisher,{task_id:t.id});
+ await assert.rejects(()=>taskRpc('update',t.id,{...config,budget_amount_minor:200},t.version),/frozen/);
+ await pay('apply_funding',null,{id:f.id,session_id:'cs_integration',state:'paid',charge_id:'ch_integration'});
+ t=await taskRpc('publish',t.id,null,t.version);
+ const s=await sub(tester,'submit',t.id,{operation_notes:'Blocker',answers:[],evidence_ids:[await evidence(t.id,tester)]});
+ const body={action:'accept',reason:'',expected_revision_id:s.current_revision_id,expected_version:s.version};
+ await assert.rejects(()=>sub(publisher,'decide',s.id,body),/confirmation required/);
+ assert.equal((await db.query('select count(*)::int n from submission_decisions where submission_id=$1',[s.id])).rows[0].n,0);
+ const accepted=await sub(publisher,'decide',s.id,{...body,confirm_payment:true},'accept-once');
+ assert.equal(accepted.processing_status,'accepted');assert.equal(accepted.payment_status,'pending');
+ assert.deepEqual(await sub(publisher,'decide',s.id,{...body,confirm_payment:true},'accept-once'),accepted);
+ assert.equal((await pay('task',publisher,{task_id:t.id})).remaining_amount_minor,0);
+ const s2=await sub(tester2,'submit',t.id,{operation_notes:'Second',answers:[],evidence_ids:[await evidence(t.id,tester2)]});
+ await assert.rejects(()=>sub(publisher,'decide',s2.id,{...body,confirm_payment:true,expected_revision_id:s2.current_revision_id,expected_version:s2.version}),/Insufficient task budget/);
+ assert.equal((await db.query('select processing_status from submissions where id=$1',[s2.id])).rows[0].processing_status,'awaiting_publisher');
+ assert.equal((await db.query('select count(*)::int n from payment_rewards where task_id=$1',[t.id])).rows[0].n,1);
+});
+test('free task, supplements after closure, stale decisions, and no second reward',async()=>{
+ let t=await taskRpc('create',null,{...config,reward_amount_minor:0,budget_amount_minor:0},null);t=await taskRpc('publish',t.id,null,t.version);
+ const e=await evidence(t.id,tester);const body={operation_notes:'Original',answers:[],evidence_ids:[e]};const s=await sub(tester,'submit',t.id,body);
+ const requested=await sub(publisher,'decide',s.id,{action:'request_changes',reason:'More details',expected_revision_id:s.current_revision_id,expected_version:s.version});
+ await taskRpc('close',t.id,null,t.version);
+ const revised=await sub(tester,'revise',s.id,{...body,operation_notes:'Supplement',expected_revision_id:requested.current_revision_id,expected_version:requested.version});
+ assert.equal(revised.submission_no,s.submission_no);
+ await assert.rejects(()=>sub(publisher,'decide',s.id,{action:'accept',expected_revision_id:s.current_revision_id,expected_version:s.version}),/version_conflict/);
+ const accepted=await sub(publisher,'decide',s.id,{action:'accept',expected_revision_id:revised.current_revision_id,expected_version:revised.version});
+ assert.equal(accepted.payment_status,'not_required');
+ assert.equal((await db.query('select count(*)::int n from submission_revisions where submission_id=$1',[s.id])).rows[0].n,2);
+ assert.equal((await pay('task',publisher,{task_id:t.id})).pending_amount_minor,0);
+});

@@ -76,7 +76,7 @@ export function validateBody(
   } else {
     text(b.operation_notes ?? "", 10000);
     if (
-      !Array.isArray(b.answers) || b.answers.length < 1 ||
+      !Array.isArray(b.answers) ||
       b.answers.length > 100
     ) throw new ApiError(422, "invalid_answers");
     const keys = new Set();
@@ -151,6 +151,10 @@ export function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 export const errorStatus: Record<string, number> = {
+  "Human payment confirmation required": 422,
+  "Task has not been funded": 409,
+  "Insufficient task budget": 409,
+  "Reward authorization conflict": 409,
   task_not_found: 404,
   submission_not_found: 404,
   forbidden: 403,

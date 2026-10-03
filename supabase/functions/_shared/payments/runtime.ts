@@ -1,5 +1,5 @@
-import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import Stripe from "npm:stripe@18.5.0";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { applicationUrl, PaymentError, requireTestMode } from "./core.ts";
 
 function env(name: string) {

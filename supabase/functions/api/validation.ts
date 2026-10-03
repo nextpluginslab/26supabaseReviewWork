@@ -50,7 +50,9 @@ export function validateConfig(input: unknown): Record<string, unknown> {
     ]
   ) {
     if (
-      typeof c[key] !== "string" || !(c[key] as string).trim() ||
+      typeof c[key] !== "string" ||
+      (!["experience_instructions", "task_description", "evidence_instructions"]
+        .includes(key) && !(c[key] as string).trim()) ||
       (c[key] as string).length >
         (["title", "app_name"].includes(key) ? 200 : 10000)
     ) errors[key] = "Required non-empty text within length limit.";
@@ -73,8 +75,8 @@ export function validateConfig(input: unknown): Record<string, unknown> {
   for (const key of ["reward_amount_minor", "budget_amount_minor"]) {
     if (
       !Number.isSafeInteger(c[key]) || Number(c[key]) < 0 ||
-      Number(c[key]) > 100000000
-    ) errors[key] = "Use integer cents between 0 and 100000000.";
+      Number(c[key]) > 99999999
+    ) errors[key] = "Use integer cents between 0 and 99999999.";
   }
   if (Number(c.reward_amount_minor) > Number(c.budget_amount_minor)) {
     errors.budget_amount_minor = "Budget must cover at least one reward.";
@@ -103,8 +105,8 @@ export function validateConfig(input: unknown): Record<string, unknown> {
   ) errors.deadline_at = "Use an ISO 8601 datetime with timezone.";
   const questions = c.questions;
   const keyPattern = /^[a-zA-Z0-9_-]{1,64}$/;
-  if (!Array.isArray(questions) || !questions.length || questions.length > 30) {
-    errors.questions = "Provide 1 to 30 questions.";
+  if (!Array.isArray(questions) || questions.length > 30) {
+    errors.questions = "Provide 0 to 30 questions.";
   } else {
     const keys = new Set();
     questions.forEach((q, i) => {

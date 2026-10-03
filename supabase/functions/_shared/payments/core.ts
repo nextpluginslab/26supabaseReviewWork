@@ -1,4 +1,4 @@
-import Stripe from "stripe";
+import Stripe from "npm:stripe@18.5.0";
 
 export class PaymentError extends Error {
   constructor(public status: number, public code: string, message: string) {

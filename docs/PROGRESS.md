@@ -1,3 +1,9 @@
+# Latest integration status
+
+Task, submission, upload, AI result reads, payment transaction hooks, Agent scope checks and notifications are connected to the frontend. Cloud integration is deployed and verified; Stripe credentials and the real Sandbox payment run remain pending. See [INTEGRATION.md](INTEGRATION.md).
+
+The original branch delivery records follow for historical context.
+
 # 开发进度
 
 ## Task API — 等待测试

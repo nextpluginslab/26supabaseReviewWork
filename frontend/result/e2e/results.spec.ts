@@ -4,7 +4,7 @@ test("developer can inspect, sign in, confirm once and persist the result", asyn
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/tasks/e2e/results");
+  await page.goto("/tasks/demo/results");
   await expect(
     page.getByRole("heading", { name: "Results", exact: true }),
   ).toBeVisible();

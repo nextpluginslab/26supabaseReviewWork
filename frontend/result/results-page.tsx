@@ -1,6 +1,11 @@
 "use client";
 
 import "./results.css";
+import { AuthPanel } from "@/components/auth-panel";
+import { isDemo } from "@/lib/supabase";
+import { getSubmissionDetail, decide, refreshEvidence } from "./api";
+import { TaskFunding } from "@/components/task-funding";
+import { mutate } from "@/lib/api-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -46,6 +51,10 @@ const paymentLabels = {
   awaiting_confirmation: "Not paid",
   paid: "Paid · simulated",
   pending: "Pending · simulated",
+  failed: "Payment failed",
+  processing: "Payment processing",
+  unknown: "Reconciling payment",
+  reconciliation_required: "Reconciliation required",
   not_payable: "No payment",
   not_required: "Not required",
 };
@@ -67,6 +76,24 @@ function Status({ status }: { status: ReviewStatus }) {
 }
 
 export function ResultsPage({ taskId }: { taskId: string }) {
+  return isDemo(taskId) ? (
+    <ResultsContent taskId={taskId} />
+  ) : (
+    <AuthPanel required>
+      <ResultsContent taskId={taskId} />
+    </AuthPanel>
+  );
+}
+function ResultsContent({ taskId }: { taskId: string }) {
+  const live = !isDemo(taskId);
+  const paymentText = (status: keyof typeof paymentLabels) =>
+    live && status === "paid"
+      ? "Paid · test transfer"
+      : live && status === "pending"
+        ? "Payment pending"
+        : paymentLabels[status];
+  const [reviewReason, setReviewReason] = useState("");
+  const [detailError, setDetailError] = useState("");
   const [data, setData] = useState<Results | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -96,8 +123,12 @@ export function ResultsPage({ taskId }: { taskId: string }) {
       setData(result);
       setQuestion(result.task.questions[0]?.id ?? "");
       setSession(getSession());
-    } catch {
-      setError("We couldn’t load these results. Please try again.");
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "We couldn’t load these results. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -116,6 +147,8 @@ export function ResultsPage({ taskId }: { taskId: string }) {
     return () => clearTimeout(timer);
   }, [notice]);
   const openDetail = (id: string | null) => {
+    setDetailError("");
+    setReviewReason("");
     setDetail(id);
     const url = new URL(window.location.href);
     if (id) url.searchParams.set("submission", id);
@@ -133,13 +166,58 @@ export function ResultsPage({ taskId }: { taskId: string }) {
       ) ?? [],
     [data, filter, search],
   );
+  const remoteDetailId = data?.submissions.find(
+    (s) => s.id === detail,
+  )?.backendId;
+  useEffect(() => {
+    if (!live || !remoteDetailId) return;
+    let active = true;
+    setDetailError("Loading submission details…");
+    getSubmissionDetail(remoteDetailId)
+      .then((row) => {
+        if (active) {
+          setData((d) =>
+            d
+              ? {
+                  ...d,
+                  submissions: d.submissions.map((s) =>
+                    s.backendId === row.backendId ? row : s,
+                  ),
+                }
+              : d,
+          );
+          setDetailError("");
+        }
+      })
+      .catch((e) => {
+        if (active) setDetailError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [live, remoteDetailId]);
+  async function review(action: "request_changes" | "decline") {
+    if (!selected || busy) return;
+    setBusy(true);
+    setActionError("");
+    try {
+      setData(await decide(taskId, selected, action, reviewReason));
+      setDetail(null);
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   const pageCount = Math.max(1, Math.ceil(filtered.length / 5));
   const selected = data?.submissions.find((s) => s.id === detail);
   const confirming = data?.submissions.find((s) => s.id === confirm);
   const budget = data ? getBudget(data) : { paid: 0, pending: 0, remaining: 0 };
   const distribution = data ? getDistribution(data, question) : [];
-  const total = data?.submissions.length ?? 0;
+  const total =
+    data?.statistics?.total_submissions ?? data?.submissions.length ?? 0;
   const awaiting =
+    data?.statistics?.status_counts.awaiting_publisher ??
     data?.submissions.filter((s) => s.status === "awaiting_publisher").length ??
     0;
   const requestConfirm = (id: string) => {
@@ -152,10 +230,14 @@ export function ResultsPage({ taskId }: { taskId: string }) {
     setBusy(true);
     setActionError("");
     try {
-      const next = await approveSubmission(taskId, confirm);
+      const next = await approveSubmission(taskId, confirm, confirming);
       setData(next);
       setConfirm(null);
-      setNotice("Feedback confirmed. Mock payment updated.");
+      setNotice(
+        live
+          ? "Feedback accepted. Payment status will update after processing."
+          : "Feedback confirmed. Mock payment updated.",
+      );
     } catch (e) {
       setActionError(
         e instanceof Error
@@ -172,15 +254,17 @@ export function ResultsPage({ taskId }: { taskId: string }) {
         <span className="brand">
           reviewWork <span>/</span> Results
         </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            session ? (signOut(), setSession(null)) : setLoginOpen(true)
-          }
-        >
-          {session ? "Sign out" : "Developer login"}
-        </Button>
+        {!live && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              session ? (signOut(), setSession(null)) : setLoginOpen(true)
+            }
+          >
+            {session ? "Sign out" : "Developer login"}
+          </Button>
+        )}
       </header>
       <main className="results-main">
         {loading ? (
@@ -197,6 +281,7 @@ export function ResultsPage({ taskId }: { taskId: string }) {
           </div>
         ) : (
           <>
+            {live && <TaskFunding taskId={taskId} onUpdate={load} />}
             <div className="page-heading">
               <h1>Results</h1>
               <p>{data.task.title}</p>
@@ -211,7 +296,12 @@ export function ResultsPage({ taskId }: { taskId: string }) {
               <span className="remaining-budget">
                 <strong>{money(budget.remaining)}</strong> remaining budget
               </span>
-              <span className="demo-label">Demo · Simulated payments</span>
+              <span className="demo-label">
+                {live ? "Stripe Sandbox" : "Demo · Simulated payments"}
+              </span>
+              <Button variant="outline" onClick={() => void load()}>
+                Refresh
+              </Button>
             </div>
             <section className="overview" aria-label="Feedback overview">
               <div className="distribution">
@@ -353,7 +443,7 @@ export function ResultsPage({ taskId }: { taskId: string }) {
                         </td>
                         <td>
                           <span className="payment-label">
-                            {paymentLabels[s.payment]}
+                            {paymentText(s.payment)}
                           </span>
                         </td>
                         <td>
@@ -467,14 +557,22 @@ export function ResultsPage({ taskId }: { taskId: string }) {
               <div className="detail-section">
                 <h3>
                   Original evidence{" "}
-                  <span className="muted-label">Demo assets</span>
+                  <span className="muted-label">
+                    {live ? "Private uploads" : "Demo assets"}
+                  </span>
                 </h3>
                 <div className="evidence-list">
                   {selected.evidence.map((e) => (
                     <button
                       className="evidence-preview"
                       key={e.url}
-                      onClick={() => setEvidence(e)}
+                      onClick={async () => {
+                        try {
+                          setEvidence(live ? await refreshEvidence(e) : e);
+                        } catch (err) {
+                          setDetailError((err as Error).message);
+                        }
+                      }}
                     >
                       {e.type === "image" ? (
                         <img src={e.url} alt={e.name} />
@@ -507,6 +605,80 @@ export function ResultsPage({ taskId }: { taskId: string }) {
                   Advisory only · AI does not approve feedback or payments.
                 </small>
               </div>
+              {live && (
+                <>
+                  <p role="status">{detailError}</p>
+                  <section>
+                    <h3>Revision history</h3>
+                    {selected.history?.map((r) => (
+                      <details key={r.id}>
+                        <summary>
+                          Revision {r.revision_no} · {date(r.submitted_at)}
+                        </summary>
+                        <p>{r.operation_notes}</p>
+                        {r.answers.map((a) => (
+                          <p key={a.question_key}>
+                            {
+                              data.task.questions.find(
+                                (q) => q.id === a.question_key,
+                              )?.text
+                            }
+                            : {a.selected_option_key} — {a.reason}
+                          </p>
+                        ))}
+                      </details>
+                    ))}
+                  </section>
+                  {["awaiting_publisher", "changes_requested"].includes(
+                    selected.status,
+                  ) && (
+                    <section>
+                      <label>
+                        Review reason
+                        <textarea
+                          value={reviewReason}
+                          onChange={(e) => setReviewReason(e.target.value)}
+                        />
+                      </label>
+                      <Button
+                        disabled={busy || !reviewReason.trim() || !!detailError}
+                        onClick={() => void review("request_changes")}
+                      >
+                        Request more information
+                      </Button>
+                      <Button
+                        disabled={busy || !reviewReason.trim() || !!detailError}
+                        onClick={() => void review("decline")}
+                      >
+                        Decline
+                      </Button>
+                      {actionError && <p role="alert">{actionError}</p>}
+                    </section>
+                  )}
+                  {selected.payment === "failed" && selected.rewardId && (
+                    <Button
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await mutate(
+                            "payments",
+                            `/rewards/${selected.rewardId}/retry`,
+                            {},
+                          );
+                          await load();
+                        } catch (e) {
+                          setActionError((e as Error).message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Retry payment
+                    </Button>
+                  )}
+                </>
+              )}
               {selected.reviewReason && (
                 <div className="review-reason">
                   <h3>Publisher review reason</h3>
@@ -518,7 +690,7 @@ export function ResultsPage({ taskId }: { taskId: string }) {
                   <CreditCard size={16} />
                   Payment status
                 </span>
-                <strong>{paymentLabels[selected.payment]}</strong>
+                <strong>{paymentText(selected.payment)}</strong>
               </div>
               <div className="detail-actions">
                 <small>
@@ -628,7 +800,9 @@ export function ResultsPage({ taskId }: { taskId: string }) {
           </DialogTitle>
           <DialogDescription className="dialog-description">
             You’re accepting {confirming?.name}’s submission and authorizing a
-            simulated payment.
+            {live
+              ? "Stripe Sandbox payment (when a reward is due)."
+              : "simulated payment."}
           </DialogDescription>
           <div className="confirmation-lines">
             <div>
@@ -652,8 +826,9 @@ export function ResultsPage({ taskId }: { taskId: string }) {
           <div className="info-note">
             <FlaskConical size={17} />
             <span>
-              Mock payment. No Stripe request is made and no real money is
-              transferred.
+              {live
+                ? "This authorizes a Stripe test transfer. Accepted feedback reserves its reward until payment succeeds."
+                : "Mock payment. No Stripe request is made and no real money is transferred."}
             </span>
           </div>
           {actionError && (
@@ -680,7 +855,7 @@ export function ResultsPage({ taskId }: { taskId: string }) {
               ? "Confirming…"
               : data?.task.reward === 0
                 ? "Confirm feedback"
-                : `Confirm & simulate ${money(data?.task.reward ?? 0)} payment`}
+                : `Confirm & ${live ? "authorize" : "simulate"} ${money(data?.task.reward ?? 0)} payment`}
           </Button>
         </DialogContent>
       </Dialog>
@@ -691,7 +866,9 @@ export function ResultsPage({ taskId }: { taskId: string }) {
         <DialogContent className="evidence-dialog">
           <DialogTitle className="dialog-title">{evidence?.name}</DialogTitle>
           <DialogDescription className="dialog-description">
-            Illustrative demo evidence · not a real participant upload
+            {live
+              ? "Private participant evidence"
+              : "Illustrative demo evidence · not a real participant upload"}
           </DialogDescription>
           {evidence?.type === "image" ? (
             <img src={evidence.url} alt={evidence.name} />

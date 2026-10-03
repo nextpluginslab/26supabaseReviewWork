@@ -1,4 +1,4 @@
-import Stripe from "stripe";
+import Stripe from "npm:stripe@18.5.0";
 import { PaymentError } from "./core.ts";
 import { failure, json, type Runtime } from "./runtime.ts";
 import { webhook } from "./service.ts";

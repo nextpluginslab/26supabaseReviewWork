@@ -38,7 +38,7 @@ for (
     "unsafe product URL": { app_url: "javascript:alert(1)" },
     "ambiguous deadline": { deadline_at: "2030-01-01T00:00:00Z" },
     "bad timezone": { display_timezone: "invalid/zone" },
-    "empty questionnaire": { questions: [] },
+    "missing questionnaire": { questions: null },
     "bad evidence type": { evidence_types: ["executable"] },
   })
 ) {
@@ -79,4 +79,14 @@ Deno.test("public projection strips owner, budget and internal config", () => {
     "publisher_id" in p || "budget_amount_minor" in p || "config" in p ||
     p.accepting_submissions
   ) throw new Error("Public data leak or deadline bypass");
+});
+
+Deno.test("publisher may omit questions and optional instructions", () => {
+  validateConfig({
+    ...config(),
+    questions: [],
+    experience_instructions: "",
+    task_description: "",
+    evidence_instructions: "",
+  });
 });

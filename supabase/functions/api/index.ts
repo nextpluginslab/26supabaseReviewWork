@@ -1,3 +1,4 @@
+import { ApiError as AgentError, requireAgent } from "../_shared/agent-auth.ts";
 import { ApiError, publicTask, validateConfig } from "./validation.ts";
 const base = Deno.env.get("SUPABASE_URL")!;
 const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -35,14 +36,21 @@ async function db(path: string, init: RequestInit = {}) {
       invalid_state: [409, "Task is not in the required state."],
       funding_required: [
         409,
-        "Paid publishing requires verified funding. Stripe funding is not implemented yet.",
+        "Paid publishing requires verified funding. Complete Stripe Sandbox funding first.",
       ],
       deadline_expired: [422, "Publication requires a future deadline."],
       retired_question_key: [422, "Deleted question keys cannot be reused."],
       retired_option_key: [422, "Deleted option keys cannot be reused."],
       rate_limited: [429, "Too many task writes. Retry later."],
     };
-    const known = codes[data.message];
+    const known = codes[data.message] || ({
+      "Task payment amounts are frozen": [
+        409,
+        "Payment amounts are frozen while funding is active.",
+      ],
+      "Insufficient task budget": [409, "Insufficient task budget."],
+      "Task has not been funded": [409, "Complete funding first."],
+    } as Record<string, [number, string]>)[data.message];
     if (known) throw new ApiError(known[0], data.message, known[1]);
     console.error(JSON.stringify({ event: "database_error", code: data.code }));
     throw new ApiError(500, "internal_error", "Unable to process the task.");
@@ -92,7 +100,7 @@ function decorate(row: Record<string, any>) {
     ...row,
     public_url: row.status === "draft" ? null : url,
     task_url: row.status !== "draft" && appUrl
-      ? `${appUrl.replace(/\/$/, "")}/tasks/${row.id}`
+      ? `${appUrl.replace(/\/$/, "")}/tasks/${row.public_slug}`
       : null,
   };
 }
@@ -114,12 +122,12 @@ export async function handler(req: Request): Promise<Response> {
   try {
     const url = new URL(req.url);
     const path = url.pathname.replace(/^\/api(?=\/)/, "").replace(/\/$/, "");
-    const publicMatch = path.match(/^\/v1\/public\/tasks\/([a-f0-9]{32})$/);
+    const publicMatch = path.match(/^\/v1\/public\/tasks\/([a-f0-9-]{32,36})$/);
     if (req.method === "GET" && publicMatch) {
       const rows = await db(
-        `tasks?select=id,public_slug,status,published_config,deadline_at,published_at&public_slug=eq.${
-          publicMatch[1]
-        }&status=in.(published,closed)&limit=1`,
+        `tasks?select=id,public_slug,status,published_config,deadline_at,published_at&${
+          publicMatch[1].length === 36 ? "id" : "public_slug"
+        }=eq.${publicMatch[1]}&status=in.(published,closed)&limit=1`,
       );
       if (!rows.length) {
         throw new ApiError(404, "task_not_found", "Task not found.");
@@ -127,14 +135,21 @@ export async function handler(req: Request): Promise<Response> {
       return json({ task: publicTask(rows[0]) });
     }
     const match = path.match(
-      /^\/v1\/tasks(?:\/([^/]+)(?:\/(publish|close))?)?$/,
+      /^\/v1\/tasks(?:\/([^/]+)(?:\/(publish|close|results|statistics|summary))?)?$/,
     );
     if (!match) throw new ApiError(404, "route_not_found", "Route not found.");
     const [, id, action] = match;
     if (id && !uuid.test(id)) {
       throw new ApiError(404, "task_not_found", "Task not found.");
     }
-    const allowed = action ? ["POST"] : id ? ["GET", "PATCH"] : ["GET", "POST"];
+    const insight = ["results", "statistics", "summary"].includes(action);
+    const allowed = insight
+      ? ["GET"]
+      : action
+      ? ["POST"]
+      : id
+      ? ["GET", "PATCH"]
+      : ["GET", "POST"];
     if (!allowed.includes(req.method)) {
       throw new ApiError(405, "method_not_allowed", "Method not allowed.");
     }
@@ -142,24 +157,42 @@ export async function handler(req: Request): Promise<Response> {
     if (!token?.match(/^Bearer \S+$/i)) {
       throw new ApiError(401, "unauthenticated", "Sign in to continue.");
     }
-    const authResponse = await fetch(`${base}/auth/v1/user`, {
-      headers: { apikey: secret, Authorization: token },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!authResponse.ok) {
-      throw new ApiError(
-        401,
-        "unauthenticated",
-        "Session is invalid or expired.",
+    let user: { id: string };
+    if (/^Bearer rwk_/i.test(token)) {
+      const principal = await requireAgent(
+        req,
+        action === "results" ? ["insights:read", "tasks:read"] : [
+          insight
+            ? "insights:read"
+            : req.method === "GET"
+            ? "tasks:read"
+            : "tasks:write",
+        ],
       );
-    }
-    const user = await authResponse.json();
-    if (!user.id || !user.email_confirmed_at || user.is_anonymous) {
-      throw new ApiError(
-        403,
-        "email_not_verified",
-        "Verify your email before managing tasks.",
-      );
+      user = { id: principal.publisher_id };
+    } else {
+      const authResponse = await fetch(`${base}/auth/v1/user`, {
+        headers: { apikey: secret, Authorization: token },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!authResponse.ok) {
+        throw new ApiError(
+          401,
+          "unauthenticated",
+          "Session is invalid or expired.",
+        );
+      }
+      user = await authResponse.json();
+      if (
+        !user.id || !(user as any).email_confirmed_at ||
+        (user as any).is_anonymous
+      ) {
+        throw new ApiError(
+          403,
+          "email_not_verified",
+          "Verify your email before managing tasks.",
+        );
+      }
     }
     if (req.method === "GET") {
       if (id) {
@@ -168,6 +201,42 @@ export async function handler(req: Request): Promise<Response> {
         );
         if (!rows.length) {
           throw new ApiError(404, "task_not_found", "Task not found.");
+        }
+        if (insight) {
+          const [ai, snapshot, payment] = await Promise.all([
+            db("rpc/ai_task_result", {
+              method: "POST",
+              body: JSON.stringify({ p_task_id: id }),
+            }),
+            db("rpc/ai_task_snapshot", {
+              method: "POST",
+              body: JSON.stringify({ p_task_id: id }),
+            }),
+            db("rpc/payments_command", {
+              method: "POST",
+              body: JSON.stringify({
+                p_action: "task",
+                p_actor: user.id,
+                p_data: { task_id: id },
+              }),
+            }),
+          ]);
+          if (action === "statistics") return json(snapshot.statistics);
+          if (action === "summary") {
+            return json(
+              ai || { status: "queued", summary: null, stale: false },
+            );
+          }
+          return json({
+            ai: ai || { status: "queued", summary: null, stale: false },
+            statistics: snapshot.statistics,
+            as_of: snapshot.as_of,
+            budget: {
+              paid: payment.paid_amount_minor,
+              pending: payment.pending_amount_minor,
+              remaining: payment.remaining_amount_minor,
+            },
+          });
         }
         return json({ task: decorate(rows[0]) });
       }
@@ -245,12 +314,12 @@ export async function handler(req: Request): Promise<Response> {
     });
     return json({ task: decorate(row) }, !id ? 201 : 200);
   } catch (error) {
-    if (error instanceof ApiError) {
+    if (error instanceof ApiError || error instanceof AgentError) {
       return json({
         error: {
           code: error.code,
           message: error.message,
-          field_errors: error.fields,
+          field_errors: error instanceof ApiError ? error.fields : {},
           request_id: requestId,
         },
       }, error.status);

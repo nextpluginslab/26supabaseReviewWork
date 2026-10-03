@@ -21,7 +21,11 @@ export function validateFeedback(
   now = Date.now(),
 ) {
   const errors: Record<string, string> = {};
-  if (!resubmission && now >= new Date(task.deadline).getTime())
+  if (
+    !resubmission &&
+    (task.acceptingSubmissions === false ||
+      now >= new Date(task.deadline).getTime())
+  )
     errors.deadline = "This task is closed for new submissions.";
   if (!feedback.evidence.length)
     errors.evidence =

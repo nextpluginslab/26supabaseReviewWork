@@ -112,3 +112,7 @@ Deno.test("request hashing is key-order independent, array-order sensitive", () 
   ) throw Error("Unstable object hash");
   if (canonical([1, 2]) === canonical([2, 1])) throw Error("Lost array order");
 });
+
+Deno.test("empty answers are valid for a zero-question task; SQL verifies coverage", () => {
+  validateBody("submit", { ...feedback, answers: [] });
+});

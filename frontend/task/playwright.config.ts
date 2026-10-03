@@ -15,7 +15,7 @@ export default defineConfig({
   webServer: {
     command: `NEXT_BUILD_DIR=.next-task-e2e npm run dev -- --port ${port}`,
     url: `http://localhost:${port}/tasks/demo`,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 120000,
   },
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Check,
@@ -18,6 +18,9 @@ import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import * as api from "./api";
+import { AuthPanel } from "@/components/auth-panel";
+import { isDemo } from "@/lib/supabase";
+import type { Session } from "@supabase/supabase-js";
 import "./task.css";
 import type { Evidence, Feedback, Submission, Task } from "./types";
 import { MIME_TYPES, validateFeedback, validateFile } from "./validation";
@@ -94,7 +97,11 @@ function EvidencePreview({
         )}
         <span>
           {(evidence.size / 1024 / 1024).toFixed(2)} MB ·{" "}
-          {failed ? "File unavailable — upload again" : "Saved locally"}
+          {failed
+            ? "File unavailable — upload again"
+            : evidence.path.startsWith("remote:")
+              ? "Uploaded securely"
+              : "Saved locally"}
         </span>
       </div>
       {failed ? (
@@ -118,6 +125,27 @@ function EvidencePreview({
 }
 
 export function TaskPage({ taskId }: { taskId: string }) {
+  const [authEmail, setAuthEmail] = useState("");
+  const change = useCallback(
+    (s: Session | null) => setAuthEmail(s?.user.email || ""),
+    [],
+  );
+  if (isDemo(taskId)) return <TaskContent taskId={taskId} />;
+  return (
+    <>
+      <AuthPanel onChange={change} />
+      <TaskContent key={authEmail} taskId={taskId} authEmail={authEmail} />
+    </>
+  );
+}
+function TaskContent({
+  taskId,
+  authEmail = "",
+}: {
+  taskId: string;
+  authEmail?: string;
+}) {
+  const live = !isDemo(taskId);
   const [task, setTask] = useState<Task>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -127,7 +155,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [verifiedEmail, setVerifiedEmail] = useState("");
+  const [verifiedEmail, setVerifiedEmail] = useState(authEmail);
   const [codeOpen, setCodeOpen] = useState(false);
   const [code, setCode] = useState("");
   const [preview, setPreview] = useState(false);
@@ -135,9 +163,12 @@ export function TaskPage({ taskId }: { taskId: string }) {
   const [now, setNow] = useState(Date.now());
   const fileInput = useRef<HTMLInputElement>(null);
   const editing = !submission || submission.status === "changes_requested";
-  const locked = !editing || busy;
+  const locked = !editing || busy || (live && !authEmail);
   const expired = Boolean(
-    task && now >= new Date(task.deadline).getTime() && !submission,
+    task &&
+      (task.acceptingSubmissions === false ||
+        now >= new Date(task.deadline).getTime()) &&
+      !submission,
   );
   const uploading = uploads.some((u) => !u.error);
 
@@ -145,10 +176,8 @@ export function TaskPage({ taskId }: { taskId: string }) {
     setLoading(true);
     setLoadError("");
     try {
-      const [nextTask, existing] = await Promise.all([
-        api.getTask(taskId),
-        api.getSubmission(taskId),
-      ]);
+      const nextTask = await api.getTask(taskId);
+      const existing = await api.getSubmission(taskId);
       setTask(nextTask);
       setSubmission(existing);
       const draft = api.loadDraft(taskId);
@@ -157,6 +186,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
           ? draft
           : (existing?.revisions.at(-1)?.feedback ?? emptyFeedback()),
       );
+      if (live) setFeedback((f) => ({ ...f, email: authEmail }));
       if (draft && (!existing || existing.status === "changes_requested"))
         setNotice("Draft restored.");
     } catch (error) {
@@ -269,6 +299,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
         taskId,
         { ...feedback, email: feedback.email.trim().toLowerCase() },
         submission?.revisions.length,
+        submission ?? undefined,
       );
       setSubmission(result);
       setNotice("");
@@ -345,10 +376,12 @@ export function TaskPage({ taskId }: { taskId: string }) {
                   {money(task.reward)} <span>per accepted submission</span>
                 </dd>
               </div>
-              <div>
-                <dt>Time</dt>
-                <dd>~{task.minutes} min</dd>
-              </div>
+              {task.minutes > 0 && (
+                <div>
+                  <dt>Time</dt>
+                  <dd>~{task.minutes} min</dd>
+                </div>
+              )}
               <div>
                 <dt>Deadline</dt>
                 <dd>{date(task)}</dd>
@@ -420,6 +453,9 @@ export function TaskPage({ taskId }: { taskId: string }) {
                       pending: "Payment · Pending",
                       paid: "Paid · Test transfer only",
                       failed: "Payment failed · Publisher can retry",
+                      processing: "Payment processing",
+                      unknown: "Payment reconciling",
+                      reconciliation_required: "Payment needs reconciliation",
                       not_payable: "No payment",
                       not_required: "No payment required",
                     }[submission.payment]
@@ -638,80 +674,82 @@ export function TaskPage({ taskId }: { taskId: string }) {
                 </p>
               </section>
 
-              <section
-                className="fw-content-card"
-                id="section-3"
-                data-section="3"
-              >
-                <h2>Questions</h2>
-                <div className="fw-questions">
-                  {task.questions.map((q, index) => (
-                    <fieldset
-                      className="fw-question"
-                      key={q.id}
-                      id={`question-${q.id}`}
-                      disabled={locked}
-                    >
-                      <legend>
-                        <span>{String(index + 1).padStart(2, "0")}</span>
-                        {q.title}
-                        <span className="fw-required-star">*</span>
-                      </legend>
-                      <RadioGroup
-                        aria-label={q.title}
-                        value={feedback.answers[q.id]?.optionId ?? ""}
-                        onValueChange={(optionId) =>
-                          updateAnswer(q.id, { optionId })
-                        }
+              {task.questions.length > 0 && (
+                <section
+                  className="fw-content-card"
+                  id="section-3"
+                  data-section="3"
+                >
+                  <h2>Questions</h2>
+                  <div className="fw-questions">
+                    {task.questions.map((q, index) => (
+                      <fieldset
+                        className="fw-question"
+                        key={q.id}
+                        id={`question-${q.id}`}
                         disabled={locked}
                       >
-                        {q.options.map((option) => (
-                          <label
-                            className={`fw-option ${feedback.answers[q.id]?.optionId === option.id ? "fw-selected" : ""}`}
-                            key={option.id}
-                            htmlFor={`${q.id}-${option.id}`}
-                          >
-                            <RadioGroupItem
-                              id={`${q.id}-${option.id}`}
-                              value={option.id}
-                            />
-                            {option.label}
-                          </label>
-                        ))}
-                      </RadioGroup>
-                      <label
-                        className="fw-reason-label"
-                        htmlFor={`reason-${q.id}`}
-                      >
-                        Why? <span>*</span>
-                      </label>
-                      <textarea
-                        id={`reason-${q.id}`}
-                        aria-invalid={!!errors[q.id]}
-                        aria-describedby={
-                          errors[q.id] ? `error-${q.id}` : undefined
-                        }
-                        rows={3}
-                        maxLength={5000}
-                        value={feedback.answers[q.id]?.reason ?? ""}
-                        onChange={(e) =>
-                          updateAnswer(q.id, { reason: e.target.value })
-                        }
-                        placeholder="Explain your answer"
-                      />
-                      {errors[q.id] && (
-                        <p
-                          className="fw-error-text"
-                          id={`error-${q.id}`}
-                          role="alert"
+                        <legend>
+                          <span>{String(index + 1).padStart(2, "0")}</span>
+                          {q.title}
+                          <span className="fw-required-star">*</span>
+                        </legend>
+                        <RadioGroup
+                          aria-label={q.title}
+                          value={feedback.answers[q.id]?.optionId ?? ""}
+                          onValueChange={(optionId) =>
+                            updateAnswer(q.id, { optionId })
+                          }
+                          disabled={locked}
                         >
-                          {errors[q.id]}
-                        </p>
-                      )}
-                    </fieldset>
-                  ))}
-                </div>
-              </section>
+                          {q.options.map((option) => (
+                            <label
+                              className={`fw-option ${feedback.answers[q.id]?.optionId === option.id ? "fw-selected" : ""}`}
+                              key={option.id}
+                              htmlFor={`${q.id}-${option.id}`}
+                            >
+                              <RadioGroupItem
+                                id={`${q.id}-${option.id}`}
+                                value={option.id}
+                              />
+                              {option.label}
+                            </label>
+                          ))}
+                        </RadioGroup>
+                        <label
+                          className="fw-reason-label"
+                          htmlFor={`reason-${q.id}`}
+                        >
+                          Why? <span>*</span>
+                        </label>
+                        <textarea
+                          id={`reason-${q.id}`}
+                          aria-invalid={!!errors[q.id]}
+                          aria-describedby={
+                            errors[q.id] ? `error-${q.id}` : undefined
+                          }
+                          rows={3}
+                          maxLength={5000}
+                          value={feedback.answers[q.id]?.reason ?? ""}
+                          onChange={(e) =>
+                            updateAnswer(q.id, { reason: e.target.value })
+                          }
+                          placeholder="Explain your answer"
+                        />
+                        {errors[q.id] && (
+                          <p
+                            className="fw-error-text"
+                            id={`error-${q.id}`}
+                            role="alert"
+                          >
+                            {errors[q.id]}
+                          </p>
+                        )}
+                      </fieldset>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <section
                 className="fw-content-card submit-card"
@@ -731,7 +769,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
                         autoComplete="email"
                         id="email"
                         placeholder="you@example.com"
-                        disabled={locked || !!submission}
+                        disabled={live || locked || !!submission}
                         value={feedback.email}
                         aria-invalid={!!errors.email}
                         onChange={(e) => {
@@ -744,7 +782,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
                         }}
                       />
                     </div>
-                    {editing && (
+                    {editing && !live && (
                       <Button
                         type="button"
                         variant="outline"
@@ -782,7 +820,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
                     )}
                   </div>
 
-                  {codeOpen && (
+                  {!live && codeOpen && (
                     <div className="fw-verification">
                       <strong>Demo email verification</strong>
                       <p>
@@ -812,6 +850,9 @@ export function TaskPage({ taskId }: { taskId: string }) {
                   )}
                 </div>
                 <p className="fw-supporting-text">
+                  {live && !authEmail
+                    ? "Sign in above before uploading or submitting. "
+                    : ""}
                   Payment requires publisher acceptance and available budget.
                 </p>
                 {Object.entries(errors)
@@ -844,7 +885,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
               </section>
             </form>
           )}
-          {preview && (
+          {!live && preview && (
             <details className="fw-demo-tools">
               <summary>
                 Mock preview controls <ChevronDown size={14} />

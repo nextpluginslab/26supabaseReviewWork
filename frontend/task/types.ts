@@ -5,6 +5,7 @@ export type Question = {
 };
 export type Task = {
   id: string;
+  acceptingSubmissions?: boolean;
   title: string;
   description: string;
   appName: string;
@@ -42,6 +43,9 @@ export type ReviewStatus =
   | "declined";
 export type PaymentStatus =
   | "awaiting_confirmation"
+  | "processing"
+  | "unknown"
+  | "reconciliation_required"
   | "pending"
   | "paid"
   | "failed"
@@ -53,6 +57,9 @@ export type Revision = {
   feedback: Feedback;
 };
 export type Submission = {
+  backendId?: string;
+  currentRevisionId?: string;
+  version?: number;
   id: string;
   taskId: string;
   status: ReviewStatus;

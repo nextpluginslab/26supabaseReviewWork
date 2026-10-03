@@ -1,5 +1,11 @@
 # Tester task page
 
+Real tasks now use Supabase Auth, private Storage and the submissions API, including versioned supplements. See [INTEGRATION.md](../../docs/INTEGRATION.md) for the current contract and tests. Explicit `/tasks/demo` routes preserve the original fixture preview.
+
+The following is the historical UI delivery record; its mock-only statements apply to `mock-api.ts` and explicit demo routes.
+
+# Tester task page
+
 Next.js App Router route: `/tasks/[id]`. Open `/tasks/demo` for the sample task.
 The feature lives in `task/`; styles and shadcn-pattern Radix components are scoped
 with `fw-` classes so publisher/result pages can evolve independently.
