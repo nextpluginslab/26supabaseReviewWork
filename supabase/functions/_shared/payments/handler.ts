@@ -108,6 +108,16 @@ export async function handlePayments(
             "No receiving account setup is required for this reward.",
           );
         }
+        if (manualToken) {
+          const account = await connectStatus(rt, reward.tester_id);
+          if (account.ready || account.details_submitted) {
+            throw new PaymentError(
+              409,
+              "receiving_account_configured",
+              "This receiving account is already configured. Use verified email access if its details need updating.",
+            );
+          }
+        }
         // Fresh Account Links are intentionally generated on retry/refresh;
         // replaying a consumed single-use Stripe URL would strand recipients.
         response = json(

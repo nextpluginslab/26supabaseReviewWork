@@ -157,3 +157,34 @@ Deno.test("manual token grants only one reward view without creating an Auth ses
   );
   assert(denied.status === 401);
 });
+
+Deno.test("publisher-issued link cannot reopen an established recipient account", async () => {
+  const rt = fake({
+    linkRpc: () => ({
+      id,
+      tester_id: "recipient",
+      state: "pending",
+      amount_minor: 500,
+    }),
+    rpc: () => ({ account_id: "acct_existing" }),
+    stripe: {
+      accounts: {
+        retrieve: () => ({
+          id: "acct_existing",
+          metadata: { user_id: "recipient" },
+          capabilities: { transfers: "active" },
+          details_submitted: true,
+        }),
+      },
+    },
+  });
+  const res = await handlePayments(
+    new Request(`${appUrl}/payments/v1/rewards/${id}/claim/onboarding`, {
+      method: "POST",
+      body: "{}",
+      headers: { "x-reward-claim": "a".repeat(64) },
+    }),
+    rt,
+  );
+  assert(res.status === 409);
+});
