@@ -177,3 +177,21 @@ Supabase 在线运行时注入 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`。
 本地单元测试/隔离 SQL 测试的通过不等于第 7–8 步已完成。
 
 官方实现依据：[Checkout](https://docs.stripe.com/api/checkout/sessions/create)、[Connect transfers](https://docs.stripe.com/connect/separate-charges-and-transfers)、[幂等请求](https://docs.stripe.com/api/idempotent_requests)、[开户链接](https://docs.stripe.com/api/account_links/create)、[Supabase Stripe webhook](https://supabase.com/docs/guides/functions/examples/stripe-webhooks)。
+
+## Passwordless reward claims
+
+Publishers still authorize payment from their authenticated results page. Accepting a nonzero reward atomically queues one recipient email in `reward_claim_emails`. Each authenticated `payment-worker` invocation delivers at most one queued email and processes one transfer. Email failure does not undo acceptance or block a transfer; delivery is retried after five minutes, up to eight attempts. The recipient is resolved from the reward's `tester_id` through Auth, never from publisher input. Delivery is at-least-once: a worker interruption after SMTP acceptance may result in another link; the newest link should be used.
+
+The email uses Supabase Auth's single-use magic link. It opens `/rewards/claim?reward=<uuid>` and establishes the verified session automatically, without a login page or password. This is passwordless authentication, not anonymous access to payment accounts. The claim API checks reward ownership on every read and onboarding request. Expired/used links can be renewed on the same page using the feedback email; users can also enter the email code. Public task pages allow guest uploads and feedback without a login or email verification step. An anonymous Supabase session keeps evidence private. Guest contact emails are immutable per browser identity and unverified until a secure email link is redeemed; Auth may create a passwordless recipient account at that point. The claim API verifies the recipient email against the stored guest contact before allowing setup of the guest reward’s receiving account.
+
+`GET /v1/rewards/{id}/claim` returns only the recipient's amount, currency, state and receiving readiness. `POST /v1/rewards/{id}/claim/onboarding` accepts only an empty body, uses the existing server-bound account, and returns fresh Stripe Account Links with trusted return/refresh URLs on the reward page. Returning from Stripe does not mark a reward paid. Existing worker verification remains the only path to transfer success. No money moves through the claim endpoint.
+
+Deployment requirements:
+
+1. Apply migrations `20261004005000_reward_claims.sql`, `20261004006000_payment_worker_schedule.sql`, and `20261004007000_guest_feedback.sql`; existing unpaid rewards are queued too.
+2. Deploy `submissions`, `payments`, `payment-worker`, and the frontend. Enable Supabase anonymous sign-ins for private guest feedback sessions. Schedule the authenticated payment worker regularly as already required for transfers.
+3. Configure Supabase Auth SMTP for delivery to real recipients and retain the server-side `SUPABASE_ANON_KEY`. Ensure the Auth redirect allowlist includes `APP_URL/rewards/claim` with its reward query (the existing domain `/**` pattern covers it).
+4. Apply the magic-link and confirmation email subjects/templates from `supabase/templates/magic_link.html` in hosted Auth. Function deployment alone does not apply Auth configuration. Both `ConfirmationURL` and `Token` are included for link and code verification.
+5. Monitor `reward_claim_emails.last_error` and exhausted `attempts >= 8`; after fixing delivery, an operator can reset attempts and next_run_at for unsent rows. Recipients can always request a new verification link from the original claim page.
+
+This remains Stripe Sandbox: there is no real bank payout. Local mocked email/Stripe tests do not establish hosted SMTP delivery or an actual Stripe test transfer.

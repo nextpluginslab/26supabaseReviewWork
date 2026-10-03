@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Check,
@@ -18,9 +18,7 @@ import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import * as api from "./api";
-import { AuthPanel } from "@/components/auth-panel";
 import { isDemo } from "@/lib/supabase";
-import type { Session } from "@supabase/supabase-js";
 import "./task.css";
 import type { Evidence, Feedback, Submission, Task } from "./types";
 import { MIME_TYPES, validateFeedback, validateFile } from "./validation";
@@ -125,26 +123,9 @@ function EvidencePreview({
 }
 
 export function TaskPage({ taskId }: { taskId: string }) {
-  const [authEmail, setAuthEmail] = useState("");
-  const change = useCallback(
-    (s: Session | null) => setAuthEmail(s?.user.email || ""),
-    [],
-  );
-  if (isDemo(taskId)) return <TaskContent taskId={taskId} />;
-  return (
-    <>
-      <AuthPanel onChange={change} />
-      <TaskContent key={authEmail} taskId={taskId} authEmail={authEmail} />
-    </>
-  );
+  return <TaskContent taskId={taskId} />;
 }
-function TaskContent({
-  taskId,
-  authEmail = "",
-}: {
-  taskId: string;
-  authEmail?: string;
-}) {
+function TaskContent({ taskId }: { taskId: string }) {
   const live = !isDemo(taskId);
   const [task, setTask] = useState<Task>();
   const [loading, setLoading] = useState(true);
@@ -155,7 +136,7 @@ function TaskContent({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [verifiedEmail, setVerifiedEmail] = useState(authEmail);
+  const [verifiedEmail, setVerifiedEmail] = useState("");
   const [codeOpen, setCodeOpen] = useState(false);
   const [code, setCode] = useState("");
   const [preview, setPreview] = useState(false);
@@ -163,7 +144,7 @@ function TaskContent({
   const [now, setNow] = useState(Date.now());
   const fileInput = useRef<HTMLInputElement>(null);
   const editing = !submission || submission.status === "changes_requested";
-  const locked = !editing || busy || (live && !authEmail);
+  const locked = !editing || busy;
   const expired = Boolean(
     task &&
       (task.acceptingSubmissions === false ||
@@ -186,7 +167,7 @@ function TaskContent({
           ? draft
           : (existing?.revisions.at(-1)?.feedback ?? emptyFeedback()),
       );
-      if (live) setFeedback((f) => ({ ...f, email: authEmail }));
+      if (live) setFeedback((f) => ({ ...f, email: f.email || api.currentEmail() }));
       if (draft && (!existing || existing.status === "changes_requested"))
         setNotice("Draft restored.");
     } catch (error) {
@@ -277,7 +258,7 @@ function TaskContent({
     if (uploads.length)
       nextErrors.evidence =
         "Finish or remove pending uploads before submitting.";
-    if (verifiedEmail !== feedback.email.trim().toLowerCase())
+    if (!live && verifiedEmail !== feedback.email.trim().toLowerCase())
       nextErrors.email = "Verify your email before submitting.";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
@@ -336,7 +317,7 @@ function TaskContent({
   }
   return (
     <div className="fw-task-page">
-      {!live && (
+      {(
         <header className="fw-site-header">
           <a className="fw-brand" href="/">
             reviewWork
@@ -771,7 +752,7 @@ function TaskContent({
                         autoComplete="email"
                         id="email"
                         placeholder="you@example.com"
-                        disabled={live || locked || !!submission}
+                        disabled={locked || !!submission}
                         value={feedback.email}
                         aria-invalid={!!errors.email}
                         onChange={(e) => {
@@ -852,9 +833,7 @@ function TaskContent({
                   )}
                 </div>
                 <p className="fw-supporting-text">
-                  {live && !authEmail
-                    ? "Sign in above before uploading or submitting. "
-                    : ""}
+                  {live ? "No account or login required to submit. We’ll email a secure link to claim your reward if your feedback is accepted. " : ""}
                   Payment requires publisher acceptance and available budget.
                 </p>
                 {Object.entries(errors)

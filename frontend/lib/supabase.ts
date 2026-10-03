@@ -28,3 +28,24 @@ export function isDemo(id: string) {
     id.startsWith("rw-")
   );
 }
+
+// Create a private browser-owned guest identity only when an upload/submission
+// requires it. Reading public tasks never creates accounts or prompts for login.
+let guestSession: Promise<Session> | undefined;
+export async function ensureFeedbackSession(): Promise<Session> {
+  const existing = await session();
+  if (existing) return existing;
+  if (!guestSession) {
+    guestSession = (async () => {
+      const { data, error } = await supabase().auth.signInAnonymously();
+      if (error || !data.session) {
+        throw error || new Error("Unable to start feedback session.");
+      }
+      current = data.session;
+      return data.session;
+    })().finally(() => {
+      guestSession = undefined;
+    });
+  }
+  return guestSession;
+}

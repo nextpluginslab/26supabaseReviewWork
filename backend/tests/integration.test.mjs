@@ -12,13 +12,13 @@ const sub=async(actor,action,id,body,key=`sub-${++n}`)=>(await db.query('select 
 before(async()=>{
  db=new PGlite();
  await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create schema extensions;create schema storage;
- create table auth.users(id uuid primary key,email_confirmed_at timestamptz,is_anonymous boolean default false);
+ create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,is_anonymous boolean default false);
  create function extensions.gen_random_bytes(n integer) returns bytea language sql as $$ select decode(substr(repeat(md5(random()::text),n),1,n*2),'hex') $$;
  create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
  create table storage.objects(bucket_id text,name text,metadata jsonb);
  create function auth.uid() returns uuid language sql as $$select null::uuid$$;
- insert into auth.users values('${publisher}',now(),false),('${tester}',now(),false),('${tester2}',now(),false);`);
- for(const name of ['20261003000100_payments.sql','20261003230000_task_api.sql','20261003231000_submissions_api.sql','20261004001000_notifications.sql','20261004004000_integrate_modules.sql'])await db.exec(await readFile(new URL(`../../supabase/migrations/${name}`,import.meta.url),'utf8'));
+ insert into auth.users values('${publisher}','owner@example.com',now(),false),('${tester}','tester@example.com',now(),false),('${tester2}','other@example.com',now(),false);`);
+ for(const name of ['20261003000100_payments.sql','20261003230000_task_api.sql','20261003231000_submissions_api.sql','20261004001000_notifications.sql','20261004004000_integrate_modules.sql','20261004005000_reward_claims.sql','20261004007000_guest_feedback.sql'])await db.exec(await readFile(new URL(`../../supabase/migrations/${name}`,import.meta.url),'utf8'));
 });
 after(async()=>{await db?.close();});
 async function evidence(task,actor){const e=await sub(actor,'upload',task,{name:'shot.png',mime_type:'image/png',size_bytes:30});await db.query('insert into storage.objects values($1,$2,$3)',['submission-evidence',e.object_path,JSON.stringify({size:30,mimetype:'image/png'})]);return e.id;}
@@ -42,6 +42,7 @@ test('paid task must fund before publication; acceptance atomically creates one 
  await assert.rejects(()=>sub(publisher,'decide',s2.id,{...body,confirm_payment:true,expected_revision_id:s2.current_revision_id,expected_version:s2.version}),/Insufficient task budget/);
  assert.equal((await db.query('select processing_status from submissions where id=$1',[s2.id])).rows[0].processing_status,'awaiting_publisher');
  assert.equal((await db.query('select count(*)::int n from payment_rewards where task_id=$1',[t.id])).rows[0].n,1);
+ assert.equal((await db.query('select count(*)::int n from reward_claim_emails e join payment_rewards r on r.id=e.reward_id where r.task_id=$1',[t.id])).rows[0].n,1);
 });
 test('free task, supplements after closure, stale decisions, and no second reward',async()=>{
  let t=await taskRpc('create',null,{...config,reward_amount_minor:0,budget_amount_minor:0},null);t=await taskRpc('publish',t.id,null,t.version);
@@ -55,4 +56,31 @@ test('free task, supplements after closure, stale decisions, and no second rewar
  assert.equal(accepted.payment_status,'not_required');
  assert.equal((await db.query('select count(*)::int n from submission_revisions where submission_id=$1',[s.id])).rows[0].n,2);
  assert.equal((await pay('task',publisher,{task_id:t.id})).pending_amount_minor,0);
+});
+
+test('guest can upload and submit without email verification; reward requires matching verified email', async()=>{
+ const guest=crypto.randomUUID();
+ await db.query('insert into auth.users(id,is_anonymous) values($1,true)',[guest]);
+ let t=await taskRpc('create',null,config,null);
+ const f=await pay('reserve_funding',publisher,{task_id:t.id});
+ await pay('apply_funding',null,{id:f.id,session_id:'cs_guest',state:'paid',charge_id:'ch_guest'});
+ t=await taskRpc('publish',t.id,null,t.version);
+ const e=await evidence(t.id,guest);
+ const body={operation_notes:'Guest feedback',answers:[],evidence_ids:[e],contact_email:'tester@example.com'};
+ const s=await sub(guest,'submit',t.id,body,'guest-submit-once');
+ assert.equal(s.tester_id,guest);
+ assert.deepEqual(await sub(guest,'submit',t.id,body,'guest-submit-once'),s);
+ await assert.rejects(()=>sub(guest,'decide',s.id,{action:'accept',expected_revision_id:s.current_revision_id,expected_version:s.version,confirm_payment:true}),/email_not_verified/);
+ await sub(publisher,'decide',s.id,{action:'accept',expected_revision_id:s.current_revision_id,expected_version:s.version,confirm_payment:true});
+ const r=(await db.query('select * from payment_rewards where submission_id=$1',[s.id])).rows[0];
+ const claim=async(actor)=>(await db.query("select reward_claim_command('reward',$1,$2) result",[actor,JSON.stringify({id:r.id})])).rows[0].result;
+ assert.equal((await claim(tester)).tester_id,guest);
+ await assert.rejects(()=>claim(tester2),/Reward not found/);
+ const recipient=(await db.query("select reward_claim_command('recipient',null,$1) result",[JSON.stringify({id:r.id})])).rows[0].result;
+ assert.deepEqual(recipient,{email:'tester@example.com',guest:true});
+ // A later submission cannot redirect this guest identity's rewards to another email.
+ let t2=await taskRpc('create',null,{...config,reward_amount_minor:0,budget_amount_minor:0},null);
+ t2=await taskRpc('publish',t2.id,null,t2.version);
+ const e2=await evidence(t2.id,guest);
+ await assert.rejects(()=>sub(guest,'submit',t2.id,{...body,evidence_ids:[e2],contact_email:'other@example.com'}),/contact_email_locked/);
 });

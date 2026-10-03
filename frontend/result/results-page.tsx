@@ -234,7 +234,7 @@ function ResultsContent({ taskId }: { taskId: string }) {
       setConfirm(null);
       setNotice(
         live
-          ? "Feedback accepted. Payment status will update after processing."
+          ? "Feedback accepted. A secure reward email is queued when payment is due. Payment status will update after processing."
           : "Feedback confirmed. Mock payment updated.",
       );
     } catch (e) {

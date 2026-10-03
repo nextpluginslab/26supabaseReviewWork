@@ -1,15 +1,21 @@
 import * as mock from "./mock-api";
-import { isDemo, session, sessionEmail } from "@/lib/supabase";
-import { request, mutate } from "@/lib/api-client";
 import {
-  mapTask,
-  mapSubmission,
+  ensureFeedbackSession,
+  isDemo,
+  session,
+  sessionEmail,
+} from "@/lib/supabase";
+import { mutate, request } from "@/lib/api-client";
+import {
   feedbackBody,
+  mapSubmission,
+  mapTask,
   type PublicTask,
   type RemoteSubmission,
 } from "@/lib/contracts";
-import type { Feedback, Submission, Evidence } from "./types";
+import type { Evidence, Feedback, Submission } from "./types";
 const taskIds = new Map<string, string>();
+export const currentEmail = () => sessionEmail() || "";
 export async function getTask(id: string) {
   if (isDemo(id)) return mock.getTask(id);
   const { task } = await request<{ task: PublicTask }>(
@@ -36,7 +42,11 @@ export async function getSubmission(id: string): Promise<Submission | null> {
     "submissions",
     `/submissions/${list.items[0].id}`,
   );
-  return mapSubmission(row, auth.user.email || "");
+  return mapSubmission(
+    row,
+    (row as RemoteSubmission & { contact_email?: string }).contact_email ||
+      auth.user.email || "",
+  );
 }
 const draftKey = (id: string) =>
   `reviewwork:feedback:${sessionEmail() || "anonymous"}:${id}`;
@@ -53,6 +63,7 @@ export const verifyEmail = mock.verifyEmail;
 export const simulateReview = mock.simulateReview;
 export async function createUploadUrl(id: string, file: File) {
   if (isDemo(id)) return mock.createUploadUrl(id, file);
+  await ensureFeedbackSession();
   const row = await mutate<{ id: string; path: string; upload_url: string }>(
     "submissions",
     "/uploads",
@@ -77,8 +88,9 @@ export async function uploadEvidence(
     xhr.open("PUT", target.uploadUrl);
     xhr.setRequestHeader("Content-Type", file.type);
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable)
+      if (e.lengthComputable) {
         onProgress(Math.round((e.loaded / e.total) * 100));
+      }
     };
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300
@@ -106,8 +118,9 @@ export async function getEvidence(path: string) {
     { method: "POST" },
   );
   const response = await fetch(row.url);
-  if (!response.ok)
+  if (!response.ok) {
     throw new Error("Evidence unavailable. Refresh and try again.");
+  }
   return response.blob();
 }
 export async function submitFeedback(
@@ -117,7 +130,11 @@ export async function submitFeedback(
   snapshot?: Submission,
 ): Promise<Submission> {
   if (isDemo(id)) return mock.submitFeedback(id, feedback, expected);
-  const body = feedbackBody(feedback);
+  await ensureFeedbackSession();
+  const body = {
+    ...feedbackBody(feedback),
+    contact_email: feedback.email.trim().toLowerCase(),
+  };
   let row: RemoteSubmission;
   if (snapshot) {
     row = await mutate(
@@ -141,5 +158,5 @@ export async function submitFeedback(
     "submissions",
     `/submissions/${row.id}`,
   );
-  return mapSubmission(detail, (await session())?.user.email || "");
+  return mapSubmission(detail, feedback.email);
 }

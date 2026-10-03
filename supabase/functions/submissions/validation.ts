@@ -50,6 +50,7 @@ export function validateBody(
       "answers",
       "operation_notes",
       "evidence_ids",
+      "contact_email",
       ...(action === "revise"
         ? ["expected_revision_id", "expected_version"]
         : []),
@@ -75,6 +76,13 @@ export function validateBody(
     ) throw new ApiError(422, "invalid_payment_confirmation");
   } else {
     text(b.operation_notes ?? "", 10000);
+    if (
+      b.contact_email !== undefined &&
+      (typeof b.contact_email !== "string" || b.contact_email.length > 254 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.contact_email))
+    ) {
+      throw new ApiError(422, "invalid_contact_email");
+    }
     if (
       !Array.isArray(b.answers) ||
       b.answers.length > 100
@@ -151,6 +159,8 @@ export function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 export const errorStatus: Record<string, number> = {
+  invalid_contact_email: 422,
+  contact_email_locked: 409,
   "Human payment confirmation required": 422,
   "Task has not been funded": 409,
   "Insufficient task budget": 409,

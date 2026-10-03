@@ -1,6 +1,8 @@
 import { digest, failure, json, runtime } from "../_shared/payments/runtime.ts";
 import { workOne } from "../_shared/payments/service.ts";
 
+import { sendOneClaimEmail } from "../_shared/payments/claim-email.ts";
+
 Deno.serve(async (request) => {
   try {
     if (request.method !== "POST") {
@@ -16,7 +18,12 @@ Deno.serve(async (request) => {
     }
     // One leased job per invocation bounds execution time. Schedule every minute
     // via Cron, or invoke after the decision transaction commits.
-    return json(await workOne(rt));
+    // Delivery failure must not block an already authorized transfer.
+    const email = await sendOneClaimEmail(rt).catch(() => ({
+      processed: false,
+      error: "email_queue_unavailable",
+    }));
+    return json({ ...await workOne(rt), email });
   } catch (error) {
     return failure(error);
   }

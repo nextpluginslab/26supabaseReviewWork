@@ -88,7 +88,53 @@ export function runtime() {
     }
     return data.user;
   }
-  return { stripe, rpc, user, appUrl, env };
+  async function claimRpc<T = Record<string, unknown>>(
+    action: string,
+    actor: string | null,
+    data: Record<string, unknown> = {},
+  ): Promise<T> {
+    const { data: result, error } = await db.rpc("reward_claim_command", {
+      p_action: action,
+      p_actor: actor,
+      p_data: data,
+    });
+    if (error) {
+      throw new PaymentError(
+        error.code === "P0002" ? 404 : 500,
+        error.code === "P0002" ? "reward_not_found" : "database_error",
+        error.code === "P0002"
+          ? "This reward belongs to a different email address."
+          : "Reward service unavailable.",
+      );
+    }
+    return result as T;
+  }
+  async function sendClaimEmail(testerId: string, rewardId: string) {
+    const recipient = await claimRpc<{ email: string; guest: boolean } | null>(
+      "recipient",
+      null,
+      { id: rewardId },
+    );
+    if (!recipient?.email) throw new Error("Reward recipient unavailable");
+    // Address comes from the immutable guest contact or verified member account.
+    // Only redemption of Auth's email link grants access to the reward.
+    const mailer = createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: {
+        fetch: (input, init) =>
+          fetch(input, { ...init, signal: AbortSignal.timeout(15000) }),
+      },
+    });
+    const sent = await mailer.auth.signInWithOtp({
+      email: recipient.email,
+      options: {
+        shouldCreateUser: recipient.guest,
+        emailRedirectTo: `${appUrl}/rewards/claim?reward=${rewardId}`,
+      },
+    });
+    if (sent.error) throw new Error("Claim email delivery failed");
+  }
+  return { stripe, rpc, claimRpc, sendClaimEmail, user, appUrl, env };
 }
 export type Runtime = ReturnType<typeof runtime>;
 export function json(data: unknown, status = 200) {

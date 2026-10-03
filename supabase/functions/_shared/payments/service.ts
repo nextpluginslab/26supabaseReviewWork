@@ -154,6 +154,7 @@ export async function onboarding(
   rt: Runtime,
   actor: string,
   requestKey: string,
+  claimRewardId?: string,
 ) {
   let c = await rt.rpc<Connect>("prepare_connect", actor);
   if (!c.account_id) {
@@ -177,8 +178,12 @@ export async function onboarding(
   const link = await rt.stripe.accountLinks.create({
     account: c.account_id!,
     type: "account_onboarding",
-    refresh_url: `${rt.appUrl}/settings?connect=refresh`,
-    return_url: `${rt.appUrl}/settings?connect=return`,
+    refresh_url: claimRewardId
+      ? `${rt.appUrl}/rewards/claim?reward=${claimRewardId}&connect=refresh`
+      : `${rt.appUrl}/settings?connect=refresh`,
+    return_url: claimRewardId
+      ? `${rt.appUrl}/rewards/claim?reward=${claimRewardId}&connect=return`
+      : `${rt.appUrl}/settings?connect=return`,
   }, { idempotencyKey: `onboarding:${actor}:${requestKey}` });
   return { url: link.url, expires_at: link.expires_at, mode: "stripe_test" };
 }

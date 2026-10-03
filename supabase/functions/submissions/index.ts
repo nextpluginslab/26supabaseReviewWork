@@ -59,6 +59,7 @@ type Revision = {
   submitted_at: string;
 };
 type Tables = {
+  feedback_contacts: { user_id: string; email: string };
   payment_rewards: { id: string; submission_id: string; state: string };
   tasks: Task;
   submissions: Submission;
@@ -167,8 +168,13 @@ async function detail(s: Submission) {
       select: "revision_id,status,summary",
     })
     : [];
+  const [contact] = await rows("feedback_contacts", {
+    user_id: "eq." + s.tester_id,
+    select: "email",
+  });
   return {
     ...await paymentView(s),
+    contact_email: contact?.email ?? null,
     revisions: revisions.map((r) => ({
       ...r,
       ai: jobs.find((j) => j.revision_id === r.id) ?? { status: "queued" },
@@ -303,7 +309,7 @@ export async function handle(req: Request): Promise<Response> {
       }
       const user = await auth.json();
       actor = uuid(user.id);
-      if (!user.email_confirmed_at || user.is_anonymous) {
+      if (!user.email_confirmed_at && !user.is_anonymous) {
         throw new ApiError(403, "email_not_verified");
       }
     }

@@ -35,6 +35,61 @@ export async function handlePayments(
     const task = path.match(
       /^\/v1\/tasks\/([^/]+)\/(funding-sessions|funding|budget)$/,
     );
+    const claim = path.match(
+      /^\/v1\/rewards\/([^/]+)\/claim(?:\/(onboarding))?$/,
+    );
+    if (
+      claim &&
+      ((request.method === "GET" && !claim[2]) ||
+        (request.method === "POST" && claim[2]))
+    ) {
+      const reward = await rt.claimRpc<
+        { id: string; amount_minor: number; state: string; tester_id: string }
+      >(
+        "reward",
+        user.id,
+        { id: uuid(claim[1]) },
+      );
+      if (request.method === "GET") {
+        const account = await connectStatus(rt, reward.tester_id);
+        const { tester_id: _tester, ...visibleReward } = reward;
+        response = json({
+          ...visibleReward,
+          ready: account.ready,
+          mode: "stripe_test",
+        });
+      } else {
+        const body = await request.text();
+        if (body.length > 2 || (body !== "" && body !== "{}")) {
+          throw new PaymentError(
+            422,
+            "unexpected_fields",
+            "No account or amount overrides are accepted.",
+          );
+        }
+        if (reward.state === "paid" || reward.amount_minor === 0) {
+          throw new PaymentError(
+            409,
+            "already_settled",
+            "No receiving account setup is required for this reward.",
+          );
+        }
+        // Fresh Account Links are intentionally generated on retry/refresh;
+        // replaying a consumed single-use Stripe URL would strand recipients.
+        response = json(
+          await onboarding(
+            rt,
+            reward.tester_id,
+            crypto.randomUUID(),
+            reward.id,
+          ),
+        );
+      }
+      for (const [name, value] of Object.entries(headers)) {
+        response.headers.set(name, value);
+      }
+      return response;
+    }
     const retry = path.match(/^\/v1\/rewards\/([^/]+)\/retry$/);
     if (request.method === "GET" && task && task[2] !== "funding-sessions") {
       response = json(await taskPayments(rt, user.id, uuid(task[1])));

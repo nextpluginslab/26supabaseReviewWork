@@ -1,0 +1,97 @@
+.reward-claim {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 36px 20px 80px;
+  color: #16332d;
+}
+.reward-brand {
+  display: inline-block;
+  color: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  text-decoration: none;
+  margin-bottom: 44px;
+}
+.reward-claim section {
+  background: #fff;
+  border: 1px solid #dce7e2;
+  border-radius: 20px;
+  padding: 32px;
+}
+.reward-claim h1 {
+  font-size: 32px;
+  line-height: 1.2;
+  margin: 12px 0 16px;
+}
+.reward-claim h2 {
+  font-size: 20px;
+  margin: 24px 0 12px;
+}
+.reward-claim p {
+  line-height: 1.6;
+  margin: 12px 0;
+}
+.reward-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.reward-sandbox {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f2f5e9;
+  font-size: 13px;
+}
+.reward-amount {
+  font-size: 48px;
+  font-weight: 700;
+  margin-top: 24px;
+}
+.reward-claim label {
+  display: block;
+  margin: 16px 0;
+  font-weight: 600;
+}
+.reward-claim input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid #a6b8af;
+  border-radius: 8px;
+  font: inherit;
+}
+.reward-claim button {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  border: 0;
+  border-radius: 10px;
+  padding: 14px;
+  background: #16644f;
+  color: white;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.reward-claim button.secondary {
+  background: #edf4f0;
+  color: #16332d;
+}
+.reward-claim button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.reward-claim [role="alert"] {
+  color: #a62c25;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .reward-claim section {
+    padding: 24px 18px;
+  }
+  .reward-brand {
+    margin-bottom: 24px;
+  }
+}
