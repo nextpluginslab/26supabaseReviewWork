@@ -282,17 +282,19 @@ function CreateTaskContent({ editId }: { editId?: string }) {
               </span>
             </div>
             <p className="ct-muted">
-              Your task is saved. Share the public link to invite testers.
+              {result.needsFunding
+                ? "Your task is saved as a draft. Complete funding, then publish it from the Funding page."
+                : "Your task is published. Share the public link to invite testers."}
             </p>
             <section className="ct-section">
               <h2>Task links</h2>
               {result.needsFunding && (
-                <a href="/funding">Fund your task with Stripe →</a>
+                <a href={`/funding#${result.task.id}`}>Fund your task with Stripe →</a>
               )}
               {[
                 ["Tester page", result.testUrl],
                 ["Results page", result.resultsUrl],
-              ].map(([label, url]) => (
+              ].filter(([, url]) => url).map(([label, url]) => (
                 <div className="ct-link" key={label}>
                   <label htmlFor={label}>{label}</label>
                   <div>

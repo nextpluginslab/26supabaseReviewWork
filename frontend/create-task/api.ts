@@ -1,5 +1,5 @@
 import { cents, validateDraft, type Draft } from "./model";
-import { mutate, request } from "@/lib/api-client";
+import { ApiError, mutate, request } from "@/lib/api-client";
 import { session } from "@/lib/supabase";
 import type { TaskRow } from "@/lib/contracts";
 export async function createTask(
@@ -63,21 +63,25 @@ export async function createTask(
     task = (await mutate<{ task: TaskRow }>("api", "/tasks", { config })).task;
     sessionStorage.setItem(key, JSON.stringify({ fingerprint, id: task.id }));
   }
-  if (task.status === "draft" && config.reward_amount_minor > 0) {
-    location.assign(`/tasks/${task.id}/results`);
-    return {
-      task: { id: task.id, title: config.title },
-      testUrl: "",
-      resultsUrl: `${location.origin}/tasks/${task.id}/results`,
-      needsFunding: true,
-    };
+  if (task.status === "draft") {
+    try {
+      task = (
+        await mutate<{ task: TaskRow }>("api", `/tasks/${task.id}/publish`, {
+          version: task.version,
+        })
+      ).task;
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.code !== "funding_required")
+        throw error;
+      location.assign(`/funding#${task.id}`);
+      return {
+        task: { id: task.id, title: config.title },
+        testUrl: "",
+        resultsUrl: `${location.origin}/tasks/${task.id}/results`,
+        needsFunding: true,
+      };
+    }
   }
-  if (task.status === "draft")
-    task = (
-      await mutate<{ task: TaskRow }>("api", `/tasks/${task.id}/publish`, {
-        version: task.version,
-      })
-    ).task;
   sessionStorage.removeItem(key);
   return {
     task: { id: task.id, title: config.title },
